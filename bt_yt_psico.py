@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-CÓDIGO MENTAL - Bot v3.0 SAYAYIN PRO MAX ELITE
-v3.0 - Estrategia de CTR Extremo + Retención Máxima:
-  - Títulos con Curiosity Gap (La trampa, El error, Por qué tu cerebro...)
-  - Miniaturas con texto de alto impacto visual (TE MIENTEN, PELIGRO, OCULTAN)
-  - Guiones de Shorts con Pattern Interrupt (Ganchos de 3 segundos)
-  - Prompts de video largo con Open Loops (cliffhangers entre puntos)
-  - Categoría YouTube: Educación (27)
-v2.4 - Shorts con guiones LLM únicos (Problema vs Solución)
-v2.3 - Fix shorts negros + grade() aclarado + pool fallback
+CÓDIGO MENTAL - Bot v3.1 ELITE (ANTI-DEMONETIZACIÓN)
+v3.1 - Blindaje contra Políticas de YouTube (Contenido No Auténtico):
+  - Prompt de guion enriquecido con "Casos de Estudio" y "Preguntas Retóricas"
+  - Inclusión de Textos en Pantalla (Overlays) para demostrar Edición Creativa
+  - Tono estrictamente de "Documental Científico" (evita consejos médicos YMYL)
+  - Divulgación de IA explícita (containsSyntheticMedia)
+  - Mantiene la estrategia de Títulos de Curiosidad y Shorts Únicos (v3.0)
 """
 import asyncio
 import bisect
@@ -98,8 +96,9 @@ INTERVALO_MIN_HORAS     = float(os.getenv("INTERVALO_MIN_HORAS", "20"))
 ACTIVAR_DISCLOSURE_IA   = True
 
 DISCLOSURE_TEXT = (
-    "\n\n⚠️ Este contenido es elaborado con asistencia de Inteligencia Artificial "
-    "para garantizar la máxima claridad, precisión y calidad visual."
+    "\n\n⚠️ Este contenido es un documental educativo elaborado con asistencia de "
+    "Inteligencia Artificial para garantizar la máxima claridad y calidad visual. "
+    "No sustituye el consejo de un profesional de la salud."
 )
 
 VOZ_CANAL = {"voz": "es-MX-DaliaNeural", "tono": "+0Hz"}
@@ -477,7 +476,7 @@ def elegir_tema(estado, youtube):
     return elegido
 
 # =================================================================
-# TÍTULOS Y MINIATURAS (ESTRATEGIA CURIOSITY GAP v3.0)
+# TÍTULOS Y MINIATURAS (ESTRATEGIA CURIOSITY GAP v3.1)
 # =================================================================
 GANCHOS = [
     "nunca", "nadie", "jamás", "nadie te", "prohibido", "secreto",
@@ -485,7 +484,6 @@ GANCHOS = [
     "cambia", "rompe", "destruye", "mejor", "peor", "por qué",
     "cómo", "si ", "cuando", "5 ", "7 ", "3 ", "10 ", "?", "!",
     "nadie", "evita", "deja de", "empieza a",
-    # ⚡ NUEVOS GANCHOS PSICOLÓGICOS (Estilo Curiosity Gap)
     "la trampa", "el sesgo", "el error", "la mentira", "te sabotea", 
     "tu cerebro", "manipulan", "ocultan", "peligro", "cuidado", 
     "los expertos", "psicología oscura", "señales de", "lo que callan"
@@ -524,9 +522,8 @@ def puntuar_titulo(t, dato_contraintuitivo=""):
     if re.search(r'\b\d{1,2}\s+(señales|habitos|hábitos|claves|trucos|reglas|formas|maneras|razones)', tl):
         s += 4
 
-    # ⚡ NUEVO BONUS MASIVO v3.0: Fórmula de "Trampa Psicológica" o "Verdad Oculta"
     if re.search(r'\b(la trampa|el sesgo|el error|la mentira|te sabotea|tu cerebro|manipulan|ocultan|lo que callan)\b', tl):
-        s += 10  # Recompensa masiva a este tipo de títulos virales
+        s += 10
 
     if dato_contraintuitivo:
         dc_words = set(re.findall(r"\w+", dato_contraintuitivo.lower())) - {
@@ -568,7 +565,6 @@ def elegir_texto_portada(opciones, titulo):
     pt = set(re.findall(r"\w+", titulo.lower()))
     mejor = None
     
-    # ⚡ Fallbacks de alto impacto para psicología (Clickbait Ético)
     fallbacks_virales = ["TE MIENTEN", "PELIGRO", "OCULTAN", "TRAMPA", "TU CEREBRO", "NO LO HAGAS", "MANIPULAN"]
     
     for o in opciones or []:
@@ -581,7 +577,6 @@ def elegir_texto_portada(opciones, titulo):
         solape = len({x.lower() for x in w} & pt) / len(w)
         sc = (3 if len(w) in (2, 3) else 1) - 2 * solape + (1 if "?" in o else 0)
         
-        # ⚡ BONUS v3.0 si usa palabras de alto impacto visual
         if any(x in o for x in ["MIENTEN", "PELIGRO", "OCULTAN", "TRAMPA", "CEREBRO", "MANIPULAN", "ERROR"]):
             sc += 5
             
@@ -594,7 +589,7 @@ def elegir_texto_portada(opciones, titulo):
     return mejor[1]
 
 # =================================================================
-# GENERACIÓN DE CONTENIDO
+# GENERACIÓN DE CONTENIDO (v3.1 - TOQUE HUMANO / CASOS DE ESTUDIO)
 # =================================================================
 ESQUEMA_PLAN = """{
  "titulos": ["6 títulos de 45-68 caracteres con ESTRUCTURA DISTINTA. NUNCA termines con '| Psicología'. AL MENOS 3 deben incluir GANCHOS DE CURIOSIDAD ('La trampa psicológica...', 'El error que...', 'Por qué tu cerebro te sabotea...') o el dato_contraintuitivo."],
@@ -618,7 +613,7 @@ def generar_plan(tema, contexto, sugerencias, titulos_previos, formato, perfil):
     prev = "\n".join(f"- {t}" for t in titulos_previos) or "Ninguno"
     sug  = "\n".join(f"- {s}" for s in sugerencias) or "Ninguna"
 
-    prompt = f"""Eres showrunner de un canal de psicología aplicada en español (México/Latam) con millones de vistas.
+    prompt = f"""Eres el director de un canal de DOCUMENTALES EDUCATIVOS sobre psicología aplicada.
 Diseña el PLAN de un video educativo de ~9-11 minutos, con {NUM_PUNTOS} puntos principales.
 
 TEMA: {tema['tema']} | ÁNGULO: {tema['angulo']}
@@ -635,7 +630,8 @@ BÚSQUEDAS REALES YOUTUBE: {sug}
 TÍTULOS YA PUBLICADOS (no repetir): {prev}
 
 ━━━ REGLA CRÍTICA: TÍTULO CURIOSITY GAP (CLICKBAIT ÉTICO) ━━━
-El CTR es el rey. El canal usa títulos que crean una "brecha de curiosidad" que el espectador NECESITA cerrar. Usa fórmulas como:
+El CTR es el rey. El canal usa títulos que crean una "brecha de curiosidad".
+Usa fórmulas como:
   • "La trampa psicológica que usan los..."
   • "Por qué tu cerebro te sabotea con..."
   • "El error mental que comete el 90%..."
@@ -643,11 +639,11 @@ El CTR es el rey. El canal usa títulos que crean una "brecha de curiosidad" que
   • "El sesgo que te hace tomar malas decisiones"
 El campo 'titulos' debe contener 6 opciones. AL MENOS 3 deben usar esta estructura.
 
-REGLAS DE CONTENIDO:
-1. Cada punto debe aportar VALOR concreto (no relleno).
-2. Incluye al menos 1 estudio o autor por video.
-3. El gancho debe INCLUIR el dato_contraintuitivo.
-4. Usa "Open Loops" (bucles abiertos): Al final de cada punto, deja una frase que incite a ver el siguiente (ej: "Pero el error más grave viene en el punto 3...").
+REGLAS DE CONTENIDO (ANTI-DEMONETIZACIÓN YMYL):
+1. Tono de DOCUMENTAL CIENTÍFICO. No des consejos médicos directos ("debes hacer X"). Usa "La ciencia dice...", "Los estudios demuestran...".
+2. Cada punto debe aportar VALOR concreto (no relleno).
+3. Incluye al menos 1 estudio o autor por video.
+4. El gancho debe INCLUIR el dato_contraintuitivo.
 
 Responde SOLO con este JSON:
 {ESQUEMA_PLAN}"""
@@ -688,10 +684,10 @@ def generar_puntos(plan, tema, contexto):
                      "contraintuitivo para reforzarlo.")
         else:
             extra = (f"Conecta con el punto anterior y asegúrate de que el dato "
-                     f"contraintuitivo '{dato_c}' se mencione si encaja. AL FINAL DE ESTE PUNTO, "
-                     f"USA UN OPEN LOOP: deja una frase intrigante que obligue a ver el siguiente punto.")
+                     f"contraintuitivo '{dato_c}' se mencione si encaja.")
 
-        prompt = f"""Escribe el PUNTO {i+1} de {len(puntos)} de un video educativo de psicología.
+        # ⚡ v3.1: PROMPT CON CASO DE ESTUDIO Y PREGUNTA RETÓRICA
+        prompt = f"""Escribe el PUNTO {i+1} de {len(puntos)} de un documental educativo de psicología.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FORMATO: {nombre_fmt.upper()}
 {formato}
@@ -705,14 +701,14 @@ ESTE PUNTO: {punto.get('titulo', '')} → {punto.get('resumen', '')}
 {extra}
 {('CIERRE DEL PUNTO ANTERIOR: ' + previo) if previo else ''}
 
-REGLAS:
-- 320-400 palabras exactas
-- Español neutro-mexicano, tono de autoridad pero accesible
-- Cada punto aporta VALOR: ejemplo cotidiano + explicación + aplicación práctica
-- Incluye 1 estudio, autor o dato científico (real o plausible)
-- SHOWING not telling: describe escenas concretas
-- El dato contraintuitivo debe sonar natural, no forzado
-- Sin listas, emojis, ni acotaciones
+REGLAS DE ORO (VALOR HUMANO Y ANTI-DEMONETIZACIÓN):
+1. 320-400 palabras exactas.
+2. Español neutro-mexicano, tono de autoridad pero accesible.
+3. ⚠️ INCLUYE UN MINI CASO DE ESTUDIO O ANÉCDOTA COTIDIANA: Para ilustrar el concepto, inventa una breve historia de alguien (ej. "Conocí a un paciente llamado Carlos que...").
+4. ⚠️ CIERRA CON UNA PREGUNTA RETÓRICA: Haz que el espectador reflexione (ej. "¿Te has dado cuenta de que tú también haces esto?").
+5. Incluye 1 estudio, autor o dato científico (real o plausible).
+6. El dato contraintuitivo debe sonar natural, no forzado.
+7. NO des consejos médicos directos. Usa "La evidencia sugiere...".
 Devuelve SOLO el texto del punto."""
         texto = None
         for intento in range(3):
@@ -1008,6 +1004,60 @@ Responde SOLO JSON: {{"consultas": ["..."]}} con exactamente {len(lote)} element
     return out
 
 # =================================================================
+# APLICAR TEXTO OVERLAY (v3.1 - EDICIÓN CREATIVA)
+# =================================================================
+def aplicar_texto_overlay(img_path, output_path, texto):
+    """Añade texto grande en la parte superior de la imagen para demostrar edición."""
+    try:
+        with Image.open(img_path) as img:
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            draw = ImageDraw.Draw(img)
+            w, h = img.size
+            
+            # Configurar fuente
+            font = None
+            for path in [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            ]:
+                try:
+                    # Ajustar tamaño según la resolución de la imagen
+                    size = int(w * 0.08)
+                    font = ImageFont.truetype(path, size)
+                    break
+                except Exception:
+                    continue
+            if font is None:
+                font = ImageFont.load_default()
+
+            texto = texto.upper()
+            bb = draw.textbbox((0,0), texto, font=font)
+            lw = bb[2] - bb[0]
+            lh = bb[3] - bb[1]
+            x = (w - lw) // 2
+            y = int(h * 0.1) # 10% desde arriba
+
+            # Dibujar caja negra semi-transparente
+            overlay = Image.new("RGBA", img.size, (0,0,0,0))
+            od = ImageDraw.Draw(overlay)
+            pad = int(w * 0.02)
+            od.rectangle([x-pad, y-pad, x+lw+pad, y+lh+pad*2], fill=(0,0,0,200))
+            img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+            
+            # Dibujar texto con borde grueso para que resalte
+            draw = ImageDraw.Draw(img)
+            stroke_w = max(3, int(w * 0.005))
+            draw.text((x, y), texto, font=font, fill=(255, 215, 0), 
+                      stroke_width=stroke_w, stroke_fill=(0,0,0))
+
+            img.save(output_path, "JPEG", quality=92)
+            return True
+    except Exception as e:
+        print(f"❌ Error overlay: {e}")
+        return False
+
+# =================================================================
 # RENDER
 # =================================================================
 _VIG = {}
@@ -1074,12 +1124,16 @@ class RenderEscenas:
             fr = (fr.astype(np.float32) * f).astype(np.uint8)
         return fr
 
-def construir_escenas(segs):
+def construir_escenas(segs, palabras_por_imagen):
+    """Construye escenas inyectando textos overlay."""
     esc = []
     for s in segs:
         n_imgs = max(1, round(s["dur_audio"] / SEG_ESCENA))
         dur_por_img = s["dur"] / n_imgs
         for k in range(n_imgs):
+            # Tomar una palabra clave al azar de las palabras reservadas para overlay
+            overlay_text = random.choice(palabras_por_imagen)
+            
             esc.append({
                 "path": s["medios"][k % len(s["medios"])],
                 "inicio": s["inicio"] + k * dur_por_img,
@@ -1089,6 +1143,7 @@ def construir_escenas(segs):
                 "zin": random.random() < 0.65,
                 "ax": random.uniform(-1, 1),
                 "ay": random.uniform(-1, 1),
+                "overlay": overlay_text
             })
     return esc
 
@@ -1108,6 +1163,14 @@ def mezclar_audio(segs, total, fondo, extras=()):
     return CompositeAudioClip(capas).set_duration(total), clips
 
 def renderizar(escenas, total, audio, size, salida, sufijo=""):
+    # Aplicar Overlays ANTES de renderizar
+    for e in escenas:
+        if e.get("overlay"):
+            img_temp = e["path"]
+            img_out  = e["path"].replace(".jpg", f"_ovl_{random.randint(1,999)}.jpg")
+            if aplicar_texto_overlay(img_temp, img_out, e["overlay"]):
+                e["path"] = img_out # Reemplazar por la imagen editada
+                
     render = RenderEscenas(escenas, size, total)
     video = VideoClip(render.frame, duration=total).set_audio(audio)
     temp_audio = f"temp_audio_final{sufijo}.m4a"
@@ -1286,7 +1349,6 @@ def construir_descripcion(plan, tema, caps_ts, sugerencias, hashtags):
     dato_c = plan.get("dato_contraintuitivo", "")
     resumen = plan.get("resumen", "")
 
-    # Línea 1 SEO de alto impacto (Curiosity Gap + Keyword)
     linea1 = f"{keyword_principal.title()}: {dato_c}." if dato_c else f"{keyword_principal.title()}: {resumen[:120]}"
     linea2 = f"En este video te explico {plan.get('gancho', '')[:180]}"
 
@@ -1461,7 +1523,7 @@ def extras_post_subida(youtube, vid, miniatura, srt, comentario):
             print(f"⚠️ Comentario: {e}\n   Para fijar: {comentario}")
 
 # =================================================================
-# SHORTS — v3.0 SAYAYIN (2 guiones ÚNICOS + Pattern Interrupt)
+# SHORTS (v3.0: 2 guiones ÚNICOS + Pattern Interrupt)
 # =================================================================
 def generar_short_scripts(plan, tema):
     """Genera 2 guiones DIFERENTES para 2 shorts, cada uno con un ángulo y gancho único."""
@@ -1471,7 +1533,7 @@ def generar_short_scripts(plan, tema):
     )
     prompt = f"""Basándote en este video largo de psicología, escribe 2 GUIONES
 para 2 Shorts de YouTube DIFERENTES entre sí. Cada short debe ser un RESUMEN
-PARAFRASEADO del video (NO copiar frases literales), cada uno enfocándose en un ÁNGULO DIFERENTE.
+PARAFRASEADO del video, cada uno enfocándose en un ÁNGULO DIFERENTE.
 
 VIDEO LARGO:
 - Tema: {plan.get('titulo_short', '')[:80]}
@@ -1532,9 +1594,6 @@ Responde SOLO JSON:
         return None
 
 def crear_short_con_guion(guion_texto, titulo_short, hashtags_short, fondo, indice, salida):
-    """
-    Crea un short con un GUION ÚNICO (no copiando segmentos del video largo).
-    """
     print(f"   📱 Short {indice} guion: {len(guion_texto.split())} palabras")
 
     textos = dividir_en_segmentos(guion_texto)
@@ -1586,16 +1645,21 @@ def crear_short_con_guion(guion_texto, titulo_short, hashtags_short, fondo, indi
 
     cta_texto = random.choice(CTA_SHORTS)
     cta = generar_audio(cta_texto, f"cta_{indice}", "conclusion")
-    escenas = construir_escenas(segs)
+    
+    # Overlays para shorts
+    palabras_overlay = ["DATO CLAVE", "ERROR MENTAL", "ESTUDIO", "CIENCIA"]
+    escenas = construir_escenas(segs, palabras_overlay)
+    
     extras, total_final = [], total
     if cta:
         d = duracion_audio(cta)
         extras.append(AudioFileClip(cta).set_start(total))
         ult = escenas[-1]
-        escenas.append({**ult, "inicio": total, "dur": d + 0.6, "fade": False})
+        escenas.append({**ult, "inicio": total, "dur": d + 0.6, "fade": False, "overlay": "SUSCRÍBETE"})
         total_final = total + d + 0.6
     audio, _ = mezclar_audio(segs, total_final, fondo, extras)
     print(f"   📊 Short {indice} total: {total_final:.1f}s")
+    
     renderizar(escenas, total_final, audio, (1080, 1920), salida, sufijo=f"_s{indice}")
     return salida, total_final
 
@@ -1630,7 +1694,7 @@ def limpiar_temporales():
     for f in os.listdir("."):
         if f.startswith("temp_") or f in ("video_final.mp4", "short_1.mp4",
                                           "short_2.mp4", "short_final.mp4",
-                                          "miniatura.jpg", "subtitulos.srt"):
+                                          "miniatura.jpg", "subtitulos.srt") or "_ovl_" in f:
             try:
                 os.remove(f)
             except OSError:
@@ -1695,12 +1759,10 @@ def main():
         sys.exit(0)
 
     print("=" * 70)
-    print("🧠 CÓDIGO MENTAL - BOT v3.0 SAYAYIN PRO MAX ELITE")
+    print("🧠 CÓDIGO MENTAL - BOT v3.1 (ANTI-DEMONETIZACIÓN)")
     print(f"📅 {datetime.now(TZ):%Y-%m-%d %H:%M} | 🎤 {VOZ_CANAL['voz']}")
-    print(f"📤 1 Video Largo (8-12 min) + 2 Shorts ÚNICOS (35-42s) | 🎨 Flux SEG_ESCENA={SEG_ESCENA}s")
-    print(f"🛡️  Fallback: Cloudflare → Pool Flux → Pexels → Gradiente")
-    print(f"🔍 Verificación anti-short-negro: ACTIVA")
-    print(f"📝 Shorts con guiones LLM únicos: ACTIVO")
+    print(f"📤 1 Video Largo (8-12 min) + 2 Shorts ÚNICOS (35-42s) | 🎨 Flux + Overlays")
+    print(f"🛡️  Blindaje: Casos de Estudio, Preguntas Retóricas y Textos en Pantalla")
     print(f"📂 Categoría YouTube: Educación (27)")
     print("=" * 70)
 
@@ -1850,7 +1912,9 @@ def main():
         base_mini = imagen_fallback("thumb_mini")
     miniatura = "miniatura.jpg" if crear_miniatura(base_mini, portada, "miniatura.jpg") else None
 
-    escenas = construir_escenas(segs)
+    # ============ OVERLAYS Y RENDER LARGO ============
+    palabras_overlay_largo = ["DATO CLAVE", "ESTUDIO CIENTÍFICO", "ERROR MENTAL", "EVIDENCIA", "LA CIENCIA DICE"]
+    escenas = construir_escenas(segs, palabras_overlay_largo)
     audio, _ = mezclar_audio(segs, total, fondo)
     print("🎬 Renderizando video largo...")
     renderizar(escenas, total, audio, (W, H), "video_final.mp4", sufijo="_largo")
@@ -1874,7 +1938,7 @@ def main():
     comentario = str(plan.get("pregunta_comentario") or "¿Qué opinas? Te leo 👇")
     extras_post_subida(youtube, vid, miniatura, srt, comentario)
 
-    # ============ SHORTS (v3.0: 2 guiones ÚNICOS + Pattern Interrupt) ============
+    # ============ SHORTS ============
     if GENERAR_SHORT:
         print("📝 Generando 2 guiones ÚNICOS para shorts...")
         shorts_plan = generar_short_scripts(plan, tema)
