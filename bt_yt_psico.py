@@ -1,23 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-CÓDIGO MENTAL - Bot v2.4 ELITE MASTER PREMIUM
-Cambios v2.4 sobre v2.3:
-  - generar_short_scripts(): LLM genera 2 guiones ÚNICOS para shorts
-  - crear_short_con_guion(): Shorts con guion propio (no copia segmentos del largo)
-  - Short 1 = ángulo PROBLEMA/ADVERTENCIA, Short 2 = ángulo SOLUCIÓN/PARADOJA
-  - Eliminada crear_short() vieja (generaba contenido duplicado)
-  - Categoría confirmada: Educación (27)
-v2.3:
-  - grade() y vignette() aclarados para shorts verticales
-  - Detección de % de gradientes en short (SKIP si >40%)
-  - Reemplazo automático de gradientes con pool Flux
-v2.2:
-  - Fallback 4 niveles: Cloudflare → Pool Flux → Pexels → Gradiente
-v2.1:
-  - Duración video 8-12 min, palabras por punto 320-400
-  - Shorts 35-42 seg
-  - Programación slots batch MISMO DÍA
-  - SEO elite
+CÓDIGO MENTAL - Bot v3.0 SAYAYIN PRO MAX ELITE
+v3.0 - Estrategia de CTR Extremo + Retención Máxima:
+  - Títulos con Curiosity Gap (La trampa, El error, Por qué tu cerebro...)
+  - Miniaturas con texto de alto impacto visual (TE MIENTEN, PELIGRO, OCULTAN)
+  - Guiones de Shorts con Pattern Interrupt (Ganchos de 3 segundos)
+  - Prompts de video largo con Open Loops (cliffhangers entre puntos)
+  - Categoría YouTube: Educación (27)
+v2.4 - Shorts con guiones LLM únicos (Problema vs Solución)
+v2.3 - Fix shorts negros + grade() aclarado + pool fallback
 """
 import asyncio
 import bisect
@@ -78,6 +69,9 @@ ESTADO_FILE  = "estado_shorts.json"
 TITULOS_FILE = "titulos_publicados.json"
 TEMAS_FILE   = "temas_shorts.json"
 
+# ⚡ CATEGORÍA YOUTUBE: Educación (27)
+CATEGORY_ID = "27"
+
 DURACION_MINIMA_SEGUNDOS = 480   # 8 min
 DURACION_MAXIMA_SEGUNDOS = 720   # 12 min
 NUM_PUNTOS               = 5
@@ -102,9 +96,6 @@ HORA_SHORT_2            = int(os.getenv("HORA_SHORT_2", "15"))
 VARIACION_MINUTOS_SHORT_2 = int(os.getenv("VARIACION_MINUTOS_SHORT_2", "60"))
 INTERVALO_MIN_HORAS     = float(os.getenv("INTERVALO_MIN_HORAS", "20"))
 ACTIVAR_DISCLOSURE_IA   = True
-
-# ⚡ Categoría confirmada: Educación (27) — mejor CPM y menos competencia
-CATEGORY_ID = "27"
 
 DISCLOSURE_TEXT = (
     "\n\n⚠️ Este contenido es elaborado con asistencia de Inteligencia Artificial "
@@ -486,7 +477,7 @@ def elegir_tema(estado, youtube):
     return elegido
 
 # =================================================================
-# TÍTULOS
+# TÍTULOS Y MINIATURAS (ESTRATEGIA CURIOSITY GAP v3.0)
 # =================================================================
 GANCHOS = [
     "nunca", "nadie", "jamás", "nadie te", "prohibido", "secreto",
@@ -494,6 +485,10 @@ GANCHOS = [
     "cambia", "rompe", "destruye", "mejor", "peor", "por qué",
     "cómo", "si ", "cuando", "5 ", "7 ", "3 ", "10 ", "?", "!",
     "nadie", "evita", "deja de", "empieza a",
+    # ⚡ NUEVOS GANCHOS PSICOLÓGICOS (Estilo Curiosity Gap)
+    "la trampa", "el sesgo", "el error", "la mentira", "te sabotea", 
+    "tu cerebro", "manipulan", "ocultan", "peligro", "cuidado", 
+    "los expertos", "psicología oscura", "señales de", "lo que callan"
 ]
 PROHIBIDAS = ["testimonio real", "caso real", "100% real", "verídico", "comprobado",
               "garantizado", "secreto revelado", "hack", "truco", "trucos"]
@@ -528,6 +523,10 @@ def puntuar_titulo(t, dato_contraintuitivo=""):
         s += 6
     if re.search(r'\b\d{1,2}\s+(señales|habitos|hábitos|claves|trucos|reglas|formas|maneras|razones)', tl):
         s += 4
+
+    # ⚡ NUEVO BONUS MASIVO v3.0: Fórmula de "Trampa Psicológica" o "Verdad Oculta"
+    if re.search(r'\b(la trampa|el sesgo|el error|la mentira|te sabotea|tu cerebro|manipulan|ocultan|lo que callan)\b', tl):
+        s += 10  # Recompensa masiva a este tipo de títulos virales
 
     if dato_contraintuitivo:
         dc_words = set(re.findall(r"\w+", dato_contraintuitivo.lower())) - {
@@ -568,6 +567,10 @@ def elegir_titulo(candidatos, dato_contraintuitivo=""):
 def elegir_texto_portada(opciones, titulo):
     pt = set(re.findall(r"\w+", titulo.lower()))
     mejor = None
+    
+    # ⚡ Fallbacks de alto impacto para psicología (Clickbait Ético)
+    fallbacks_virales = ["TE MIENTEN", "PELIGRO", "OCULTAN", "TRAMPA", "TU CEREBRO", "NO LO HAGAS", "MANIPULAN"]
+    
     for o in opciones or []:
         if not isinstance(o, str):
             continue
@@ -577,23 +580,32 @@ def elegir_texto_portada(opciones, titulo):
             continue
         solape = len({x.lower() for x in w} & pt) / len(w)
         sc = (3 if len(w) in (2, 3) else 1) - 2 * solape + (1 if "?" in o else 0)
+        
+        # ⚡ BONUS v3.0 si usa palabras de alto impacto visual
+        if any(x in o for x in ["MIENTEN", "PELIGRO", "OCULTAN", "TRAMPA", "CEREBRO", "MANIPULAN", "ERROR"]):
+            sc += 5
+            
         if mejor is None or sc > mejor[0]:
             mejor = (sc, o)
-    return mejor[1] if mejor else "MENTALIDAD"
+            
+    if not mejor:
+        return random.choice(fallbacks_virales)
+        
+    return mejor[1]
 
 # =================================================================
 # GENERACIÓN DE CONTENIDO
 # =================================================================
 ESQUEMA_PLAN = """{
- "titulos": ["6 títulos de 45-68 caracteres con ESTRUCTURA DISTINTA. NUNCA termines con '| Psicología'. AL MENOS 3 deben incluir el dato_contraintuitivo o una contradicción ('menos', 'nunca', 'deja de'). Combina: 'Si [situación], NUNCA [acción]'"],
+ "titulos": ["6 títulos de 45-68 caracteres con ESTRUCTURA DISTINTA. NUNCA termines con '| Psicología'. AL MENOS 3 deben incluir GANCHOS DE CURIOSIDAD ('La trampa psicológica...', 'El error que...', 'Por qué tu cerebro te sabotea...') o el dato_contraintuitivo."],
  "tema_central": "descripción breve del tema",
  "anio_estudio": 2023,
  "protagonista": "nombre de pila del narrador (ej: Daniel, Andrea)",
  "dato_contraintuitivo": "CRÍTICO: el dato más sorprendente que rompe expectativas. Ej: 'sonreír más te hace menos creíble', 'estudiar más horas reduce el aprendizaje', 'la multitarea baja el CI 10 puntos'. Debe aparecer en AL MENOS 3 de los 6 títulos",
- "gancho": "1-2 frases (máx 35 palabras) que abren el video con el dato_contraintuitivo en primera persona",
+ "gancho": "1-2 frases (máx 35 palabras) que abren el video con el dato_contraintuitivo en primera persona. DEBE GENERAR CURIOSIDAD INMEDIATA.",
  "resumen": "sinopsis de 2-3 oraciones sin spoilers",
  "palabras_clave": ["5 keywords SEO en español, la primera es el keyword principal del video"],
- "palabras_portada": ["3 opciones de 2-3 palabras EN MAYÚSCULAS, impacto visual"],
+ "palabras_portada": ["3 opciones de 2-3 palabras EN MAYÚSCULAS (ej: TE MIENTEN, PELIGRO, EL SESGO, TRAMPA MENTAL)"],
  "miniatura_escena": "4-6 palabras en inglés para buscar/imagen (ej: brain scan, nervous person meeting, two people arguing)",
  "descripcion_gancho": "2 líneas: la primera con el keyword principal y una promesa concreta; la segunda invita a suscribirse",
  "titulo_short": "gancho de máx 55 caracteres para YouTube Short",
@@ -622,33 +634,20 @@ PERFIL DEL NARRADOR: {perfil}
 BÚSQUEDAS REALES YOUTUBE: {sug}
 TÍTULOS YA PUBLICADOS (no repetir): {prev}
 
-━━━ REGLA CRÍTICA: DATO CONTRAINTUITIVO ━━━
-El campo 'dato_contraintuitivo' es el corazón del CTR. Debe ser un dato que ROMPE
-la intuición del espectador. Ejemplos que funcionan:
-  • "sonreír más te hace menos creíble"
-  • "estudiar más horas reduce el aprendizaje"
-  • "la multitarea baja el CI 10 puntos"
-  • "dormir menos de 6h equivale a estar ebrio"
-  • "los introvertidos son mejores líderes"
-
-REGLAS DE TÍTULO:
-1. NUNCA termines con "| Psicología" ni fórmulas genéricas.
-2. AL MENOS 3 de los 6 títulos deben incluir el dato_contraintuitivo o una contradicción.
-3. Cada título con estructura DISTINTA:
-   - Advertencia: "Nunca [verbo] cuando [contexto]"
-   - Contradicción: "Mientras más [X], menos [Y]"
-   - Confesión: "Lo que descubrí sobre [tema] cambió todo"
-   - Pregunta: "¿Por qué [comportamiento] te está [consecuencia]?"
-   - Número específico: "5 señales de que [X]"
-   - Paradoja: "[acción obvia] te hace [resultado opuesto]"
-4. Combina "Si [situación], NUNCA [acción]" cuando encaje.
-5. Mayúsculas solo para 1-2 palabras de impacto.
+━━━ REGLA CRÍTICA: TÍTULO CURIOSITY GAP (CLICKBAIT ÉTICO) ━━━
+El CTR es el rey. El canal usa títulos que crean una "brecha de curiosidad" que el espectador NECESITA cerrar. Usa fórmulas como:
+  • "La trampa psicológica que usan los..."
+  • "Por qué tu cerebro te sabotea con..."
+  • "El error mental que comete el 90%..."
+  • "Lo que ocultan los expertos sobre..."
+  • "El sesgo que te hace tomar malas decisiones"
+El campo 'titulos' debe contener 6 opciones. AL MENOS 3 deben usar esta estructura.
 
 REGLAS DE CONTENIDO:
 1. Cada punto debe aportar VALOR concreto (no relleno).
 2. Incluye al menos 1 estudio o autor por video.
 3. El gancho debe INCLUIR el dato_contraintuitivo.
-4. Cada punto termina con una idea que el espectador pueda aplicar hoy.
+4. Usa "Open Loops" (bucles abiertos): Al final de cada punto, deja una frase que incite a ver el siguiente (ej: "Pero el error más grave viene en el punto 3...").
 
 Responde SOLO con este JSON:
 {ESQUEMA_PLAN}"""
@@ -689,7 +688,8 @@ def generar_puntos(plan, tema, contexto):
                      "contraintuitivo para reforzarlo.")
         else:
             extra = (f"Conecta con el punto anterior y asegúrate de que el dato "
-                     f"contraintuitivo '{dato_c}' se mencione si encaja.")
+                     f"contraintuitivo '{dato_c}' se mencione si encaja. AL FINAL DE ESTE PUNTO, "
+                     f"USA UN OPEN LOOP: deja una frase intrigante que obligue a ver el siguiente punto.")
 
         prompt = f"""Escribe el PUNTO {i+1} de {len(puntos)} de un video educativo de psicología.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1286,6 +1286,7 @@ def construir_descripcion(plan, tema, caps_ts, sugerencias, hashtags):
     dato_c = plan.get("dato_contraintuitivo", "")
     resumen = plan.get("resumen", "")
 
+    # Línea 1 SEO de alto impacto (Curiosity Gap + Keyword)
     linea1 = f"{keyword_principal.title()}: {dato_c}." if dato_c else f"{keyword_principal.title()}: {resumen[:120]}"
     linea2 = f"En este video te explico {plan.get('gancho', '')[:180]}"
 
@@ -1460,18 +1461,17 @@ def extras_post_subida(youtube, vid, miniatura, srt, comentario):
             print(f"⚠️ Comentario: {e}\n   Para fijar: {comentario}")
 
 # =================================================================
-# SHORTS — v2.4: 2 guiones ÚNICOS generados por LLM
+# SHORTS — v3.0 SAYAYIN (2 guiones ÚNICOS + Pattern Interrupt)
 # =================================================================
 def generar_short_scripts(plan, tema):
-    """Genera 2 guiones DIFERENTES para 2 shorts, cada uno con su propio ángulo."""
+    """Genera 2 guiones DIFERENTES para 2 shorts, cada uno con un ángulo y gancho único."""
     puntos_lista = "\n".join(
         f"- {p.get('titulo','')}: {p.get('resumen','')}"
         for p in plan.get("puntos", [])
     )
     prompt = f"""Basándote en este video largo de psicología, escribe 2 GUIONES
 para 2 Shorts de YouTube DIFERENTES entre sí. Cada short debe ser un RESUMEN
-PARAFRASEADO del video (NO copiar frases literales, NO reutilizar el mismo
-contenido), pero cada uno enfocándose en un ÁNGULO DIFERENTE.
+PARAFRASEADO del video (NO copiar frases literales), cada uno enfocándose en un ÁNGULO DIFERENTE.
 
 VIDEO LARGO:
 - Tema: {plan.get('titulo_short', '')[:80]}
@@ -1481,24 +1481,20 @@ VIDEO LARGO:
 {puntos_lista}
 
 ━━━ SHORT 1 (ángulo: PROBLEMA/ADVERTENCIA) ━━━
-- Título: máx 55 chars, contiene el dato contraintuitivo o una advertencia
-- Guion: 80-100 palabras, abre con el problema específico y por qué ocurre
-- Hashtags: 4-5 hashtags específicos del short (NO los mismos del short 2)
+- Título: máx 55 chars, contiene el dato contraintuitivo o una advertencia.
+- Guion: 80-100 palabras. EMPIEZA CON UN PATTERN INTERRUPT (ej: "Si haces esto, estás fallando", "El 90% comete este error").
+- Hashtags: 4-5 hashtags específicos del short.
 
 ━━━ SHORT 2 (ángulo: SOLUCIÓN/PARADOJA) ━━━
-- Título: DIFERENTE al short 1, máx 55 chars, contiene una PARADOJA o CONTRADICCIÓN
-- Guion: 80-100 palabras, abre con la paradoja, cierra con aplicación práctica
-- Hashtags: 4-5 hashtags DISTINTOS o parcialmente distintos al short 1
+- Título: DIFERENTE al short 1, máx 55 chars, contiene una PARADOJA o SOLUCIÓN.
+- Guion: 80-100 palabras. Empieza con la paradoja, cierra con aplicación práctica.
+- Hashtags: 4-5 hashtags DISTINTOS o parcialmente distintos al short 1.
 
 ━━━ REGLAS CRÍTICAS ━━━
-1. Los 2 shorts NO deben ser el mismo contenido reformulado
-2. Short 1 = "qué NO hacer / el problema" (advertencia)
-3. Short 2 = "qué SÍ hacer / la paradoja" (solución)
-4. Los 2 títulos deben ser claramente DIFERENTES en estructura y palabras
-5. Cada short debe sostenerse solo (no depender del otro)
-6. NO copies frases literales del video largo
-7. El guion NO debe incluir CTA de "suscríbete" — el bot lo agrega después
-8. Los hashtags del short 1 y short 2 deben tener al menos 2 diferentes entre sí
+1. Los 2 shorts NO deben ser el mismo contenido reformulado.
+2. Los 2 títulos deben ser claramente DIFERENTES en estructura y palabras.
+3. El guion NO debe incluir CTA de "suscríbete" — el bot lo agrega después.
+4. Los hashtags del short 1 y short 2 deben tener al menos 2 diferentes entre sí.
 
 Responde SOLO JSON:
 {{
@@ -1538,7 +1534,6 @@ Responde SOLO JSON:
 def crear_short_con_guion(guion_texto, titulo_short, hashtags_short, fondo, indice, salida):
     """
     Crea un short con un GUION ÚNICO (no copiando segmentos del video largo).
-    Usa el pool Flux (rápido, gratis) y solo recurre a Cloudflare/Pexels si el pool está vacío.
     """
     print(f"   📱 Short {indice} guion: {len(guion_texto.split())} palabras")
 
@@ -1700,7 +1695,7 @@ def main():
         sys.exit(0)
 
     print("=" * 70)
-    print("🧠 CÓDIGO MENTAL - BOT v2.4 ELITE MASTER PREMIUM")
+    print("🧠 CÓDIGO MENTAL - BOT v3.0 SAYAYIN PRO MAX ELITE")
     print(f"📅 {datetime.now(TZ):%Y-%m-%d %H:%M} | 🎤 {VOZ_CANAL['voz']}")
     print(f"📤 1 Video Largo (8-12 min) + 2 Shorts ÚNICOS (35-42s) | 🎨 Flux SEG_ESCENA={SEG_ESCENA}s")
     print(f"🛡️  Fallback: Cloudflare → Pool Flux → Pexels → Gradiente")
@@ -1788,7 +1783,7 @@ def main():
     total = construir_timeline(segs)
     print(f"⏱️ Duración final: {total/60:.1f} min")
 
-    # ============ IMÁGENES ============
+    # ============ IMÁGENES CON 4 NIVELES DE FALLBACK ============
     print("🎨 Planificando visuales con IA...")
     prompts_visuales = planificar_visuales(segs, tema)
 
@@ -1879,7 +1874,7 @@ def main():
     comentario = str(plan.get("pregunta_comentario") or "¿Qué opinas? Te leo 👇")
     extras_post_subida(youtube, vid, miniatura, srt, comentario)
 
-    # ============ SHORTS (v2.4: 2 guiones ÚNICOS) ============
+    # ============ SHORTS (v3.0: 2 guiones ÚNICOS + Pattern Interrupt) ============
     if GENERAR_SHORT:
         print("📝 Generando 2 guiones ÚNICOS para shorts...")
         shorts_plan = generar_short_scripts(plan, tema)
