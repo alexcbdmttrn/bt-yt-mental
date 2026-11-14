@@ -1,17 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-CÓDIGO MENTAL - Bot v2.3 ELITE MASTER PREMIUM
-Cambios v2.3 sobre v2.2:
-  - grade() y vignette() aclarados para que shorts verticales no se vean negros en móvil
+CÓDIGO MENTAL - Bot v2.4 ELITE MASTER PREMIUM
+Cambios v2.4 sobre v2.3:
+  - generar_short_scripts(): LLM genera 2 guiones ÚNICOS para shorts
+  - crear_short_con_guion(): Shorts con guion propio (no copia segmentos del largo)
+  - Short 1 = ángulo PROBLEMA/ADVERTENCIA, Short 2 = ángulo SOLUCIÓN/PARADOJA
+  - Eliminada crear_short() vieja (generaba contenido duplicado)
+  - Categoría confirmada: Educación (27)
+v2.3:
+  - grade() y vignette() aclarados para shorts verticales
   - Detección de % de gradientes en short (SKIP si >40%)
-  - Reemplazo automático de gradientes del short con imágenes del pool Flux
+  - Reemplazo automático de gradientes con pool Flux
 v2.2:
   - Fallback 4 niveles: Cloudflare → Pool Flux → Pexels → Gradiente
 v2.1:
   - Duración video 8-12 min, palabras por punto 320-400
   - Shorts 35-42 seg
   - Programación slots batch MISMO DÍA
-  - SEO elite (keyword en línea 1, tags mix, hashtags 5)
+  - SEO elite
 """
 import asyncio
 import bisect
@@ -96,6 +102,9 @@ HORA_SHORT_2            = int(os.getenv("HORA_SHORT_2", "15"))
 VARIACION_MINUTOS_SHORT_2 = int(os.getenv("VARIACION_MINUTOS_SHORT_2", "60"))
 INTERVALO_MIN_HORAS     = float(os.getenv("INTERVALO_MIN_HORAS", "20"))
 ACTIVAR_DISCLOSURE_IA   = True
+
+# ⚡ Categoría confirmada: Educación (27) — mejor CPM y menos competencia
+CATEGORY_ID = "27"
 
 DISCLOSURE_TEXT = (
     "\n\n⚠️ Este contenido es elaborado con asistencia de Inteligencia Artificial "
@@ -1012,7 +1021,6 @@ def vignette(size, base=1.0, fuerza=0.55):
         _VIG[k] = ((1 - fuerza * d ** 2.2) * base).astype(np.float32)[..., None]
     return _VIG[k]
 
-# ⚡ v2.3: grade aclarado para shorts verticales
 def grade(img, etapa):
     img = ImageEnhance.Color(img).enhance(0.92)
     img = ImageEnhance.Contrast(img).enhance({"gancho": 1.10, "conclusion": 1.05}.get(etapa, 1.08))
@@ -1024,7 +1032,6 @@ class RenderEscenas:
         self.esc, self.size, self.total = escenas, size, total
         self.starts = [e["inicio"] for e in escenas]
         self._ikey = self._img = None
-        # ⚡ v2.3: vignette reducido a 0.30
         self.vig_img = vignette(size, 1.0, 0.30)
 
     def cerrar(self):
@@ -1383,8 +1390,8 @@ def subir_video(youtube, ruta, titulo, descripcion, tags, publish_at=None):
     if publish_at:
         status.update({"privacyStatus": "private", "publishAt": publish_at})
     body = {"snippet": {"title": titulo[:100], "description": descripcion[:5000],
-                        "tags": tags, "categoryId": "27", "defaultLanguage": "es",
-                        "defaultAudioLanguage": "es"},
+                        "tags": tags, "categoryId": CATEGORY_ID,
+                        "defaultLanguage": "es", "defaultAudioLanguage": "es"},
             "status": status}
     media = MediaFileUpload(ruta, chunksize=8 * 1024 * 1024, resumable=True,
                             mimetype="video/mp4")
@@ -1453,78 +1460,149 @@ def extras_post_subida(youtube, vid, miniatura, srt, comentario):
             print(f"⚠️ Comentario: {e}\n   Para fijar: {comentario}")
 
 # =================================================================
-# SHORTS (con parches v2.3)
+# SHORTS — v2.4: 2 guiones ÚNICOS generados por LLM
 # =================================================================
-def crear_short(segs_orig, fondo, indice, salida="short_final.mp4", modo="gancho"):
-    segs = [{**s} for s in segs_orig]
-    if modo == "gancho":
-        candidatos = segs[:8]
-    else:
-        total_segs = len(segs)
-        inicio = max(0, total_segs // 2 - 4)
-        candidatos = segs[inicio:inicio + 8]
+def generar_short_scripts(plan, tema):
+    """Genera 2 guiones DIFERENTES para 2 shorts, cada uno con su propio ángulo."""
+    puntos_lista = "\n".join(
+        f"- {p.get('titulo','')}: {p.get('resumen','')}"
+        for p in plan.get("puntos", [])
+    )
+    prompt = f"""Basándote en este video largo de psicología, escribe 2 GUIONES
+para 2 Shorts de YouTube DIFERENTES entre sí. Cada short debe ser un RESUMEN
+PARAFRASEADO del video (NO copiar frases literales, NO reutilizar el mismo
+contenido), pero cada uno enfocándose en un ÁNGULO DIFERENTE.
 
-    sel, t = [], 0.0
-    for s in candidatos:
-        if sel and t + s["dur"] > SHORT_CONTENT_MAX:
-            break
-        sel.append(s)
-        t += s["dur"]
-        if t >= SHORT_CONTENT_MIN:
-            break
-    if not sel:
+VIDEO LARGO:
+- Tema: {plan.get('titulo_short', '')[:80]}
+- Dato contraintuitivo: {plan.get('dato_contraintuitivo', '')}
+- Sinopsis: {plan.get('resumen', '')[:250]}
+- Puntos clave:
+{puntos_lista}
+
+━━━ SHORT 1 (ángulo: PROBLEMA/ADVERTENCIA) ━━━
+- Título: máx 55 chars, contiene el dato contraintuitivo o una advertencia
+- Guion: 80-100 palabras, abre con el problema específico y por qué ocurre
+- Hashtags: 4-5 hashtags específicos del short (NO los mismos del short 2)
+
+━━━ SHORT 2 (ángulo: SOLUCIÓN/PARADOJA) ━━━
+- Título: DIFERENTE al short 1, máx 55 chars, contiene una PARADOJA o CONTRADICCIÓN
+- Guion: 80-100 palabras, abre con la paradoja, cierra con aplicación práctica
+- Hashtags: 4-5 hashtags DISTINTOS o parcialmente distintos al short 1
+
+━━━ REGLAS CRÍTICAS ━━━
+1. Los 2 shorts NO deben ser el mismo contenido reformulado
+2. Short 1 = "qué NO hacer / el problema" (advertencia)
+3. Short 2 = "qué SÍ hacer / la paradoja" (solución)
+4. Los 2 títulos deben ser claramente DIFERENTES en estructura y palabras
+5. Cada short debe sostenerse solo (no depender del otro)
+6. NO copies frases literales del video largo
+7. El guion NO debe incluir CTA de "suscríbete" — el bot lo agrega después
+8. Los hashtags del short 1 y short 2 deben tener al menos 2 diferentes entre sí
+
+Responde SOLO JSON:
+{{
+ "short1": {{
+   "titulo": "...",
+   "guion": "...",
+   "hashtags": "#tag1 #tag2 #tag3 #tag4"
+ }},
+ "short2": {{
+   "titulo": "...",
+   "guion": "...",
+   "hashtags": "#tag1 #tag2 #tag3 #tag4"
+ }}
+}}"""
+    try:
+        txt = llm(prompt, temperature=0.95, max_tokens=1500, json_mode=True)
+        data = parsear_json(txt)
+        if not (data.get("short1") and data.get("short2")):
+            raise ValueError("faltan shorts en respuesta")
+        for k in ("short1", "short2"):
+            s = data[k]
+            if not all(f in s for f in ("titulo", "guion", "hashtags")):
+                raise ValueError(f"{k} incompleto")
+            if len(s["guion"].split()) < 50:
+                raise ValueError(f"{k} guion muy corto ({len(s['guion'].split())} palabras)")
+        t1 = data["short1"]["titulo"].lower().strip()
+        t2 = data["short2"]["titulo"].lower().strip()
+        if t1 == t2:
+            raise ValueError("títulos iguales entre shorts")
+        print(f"   ✅ Short 1: \"{data['short1']['titulo']}\"")
+        print(f"   ✅ Short 2: \"{data['short2']['titulo']}\"")
+        return data
+    except Exception as e:
+        print(f"⚠️ Generación de shorts falló: {e}")
         return None
-    print(f"   📱 Short {indice} contenido: {t:.1f}s (+ CTA ≈ {t+6:.1f}s total)")
 
-    # ⚡ PARCHE 3 v2.3: Reemplazar gradientes con imágenes del pool antes de renderizar
-    for s in sel:
-        nuevos_medios = []
-        for m in s.get("medios", []):
-            if "gradient" in m or "fallback" in m:
-                replacement = reutilizar_imagen_flux(f"short_fix_{indice}_{len(nuevos_medios)}")
-                if replacement:
-                    print(f"   🔧 Reemplazando gradiente con imagen del pool en short {indice}")
-                    nuevos_medios.append(replacement)
-                else:
-                    nuevos_medios.append(m)
-            else:
-                nuevos_medios.append(m)
-        s["medios"] = nuevos_medios
+def crear_short_con_guion(guion_texto, titulo_short, hashtags_short, fondo, indice, salida):
+    """
+    Crea un short con un GUION ÚNICO (no copiando segmentos del video largo).
+    Usa el pool Flux (rápido, gratis) y solo recurre a Cloudflare/Pexels si el pool está vacío.
+    """
+    print(f"   📱 Short {indice} guion: {len(guion_texto.split())} palabras")
 
-    # ⚡ PARCHE 2 v2.3: Verificar % de gradientes antes de renderizar
+    textos = dividir_en_segmentos(guion_texto)
+    if not textos:
+        return None, 0
+    segs = []
+    for i, txt in enumerate(textos):
+        etapa = "gancho" if i == 0 else ("conclusion" if i == len(textos) - 1 else "desarrollo")
+        segs.append({"texto": txt, "etapa": etapa, "id": f"sh{indice}_{i}"})
+    segs = sintetizar(segs)
+    if not segs:
+        print(f"   ❌ Short {indice}: sin audio")
+        return None, 0
+    total = construir_timeline(segs)
+    print(f"   🔊 Short {indice} audio: {total:.1f}s")
+
+    for i, s in enumerate(segs):
+        n_imgs = max(1, round(s["dur_audio"] / SEG_ESCENA))
+        medios = []
+        for k in range(n_imgs):
+            img_id = f"sh{indice}_{i}_{k}"
+            ruta = reutilizar_imagen_flux(img_id)
+            if not ruta:
+                ruta = generar_imagen_cloudflare(
+                    "cinematic dark psychology editorial scene", img_id
+                )
+            if not ruta:
+                ruta = imagen_fallback_pexels(
+                    "cinematic dark psychology editorial", img_id
+                )
+            if not ruta:
+                ruta = imagen_fallback(img_id)
+            medios.append(ruta)
+        s["medios"] = medios
+
     fallback_count = 0
     total_imgs = 0
-    for s in sel:
-        for m in s.get("medios", []):
+    for s in segs:
+        for m in s["medios"]:
             total_imgs += 1
             if "gradient" in m or "fallback" in m:
                 fallback_count += 1
     if total_imgs > 0:
         pct = fallback_count / total_imgs
-        print(f"   🔍 Short {indice}: {fallback_count}/{total_imgs} imágenes son gradientes ({pct*100:.0f}%)")
+        print(f"   🔍 Short {indice}: {fallback_count}/{total_imgs} gradientes ({pct*100:.0f}%)")
         if pct > 0.4:
-            print(f"   ❌ Short {indice} tiene demasiadas imágenes de fallback ({pct*100:.0f}%). SKIP para no subir algo negro.")
-            return None
-
-    t0 = 0.0
-    for s in sel:
-        s["inicio"] = t0
-        t0 += s["dur"]
-    t = t0
+            print(f"   ❌ Short {indice} demasiados gradientes. SKIP.")
+            return None, 0
 
     cta_texto = random.choice(CTA_SHORTS)
     cta = generar_audio(cta_texto, f"cta_{indice}", "conclusion")
-    escenas = construir_escenas(sel)
-    extras, total = [], t
+    escenas = construir_escenas(segs)
+    extras, total_final = [], total
     if cta:
         d = duracion_audio(cta)
-        extras.append(AudioFileClip(cta).set_start(t))
+        extras.append(AudioFileClip(cta).set_start(total))
         ult = escenas[-1]
-        escenas.append({**ult, "inicio": t, "dur": d + 0.6, "fade": False})
-        total = t + d + 0.6
-    audio, _ = mezclar_audio(sel, total, fondo, extras)
-    renderizar(escenas, total, audio, (1080, 1920), salida, sufijo=f"_s{indice}")
-    return salida
+        escenas.append({**ult, "inicio": total, "dur": d + 0.6, "fade": False})
+        total_final = total + d + 0.6
+    audio, _ = mezclar_audio(segs, total_final, fondo, extras)
+    print(f"   📊 Short {indice} total: {total_final:.1f}s")
+    renderizar(escenas, total_final, audio, (1080, 1920), salida, sufijo=f"_s{indice}")
+    return salida, total_final
 
 # =================================================================
 # MÚSICA
@@ -1622,11 +1700,13 @@ def main():
         sys.exit(0)
 
     print("=" * 70)
-    print("🧠 CÓDIGO MENTAL - BOT v2.3 ELITE MASTER PREMIUM")
+    print("🧠 CÓDIGO MENTAL - BOT v2.4 ELITE MASTER PREMIUM")
     print(f"📅 {datetime.now(TZ):%Y-%m-%d %H:%M} | 🎤 {VOZ_CANAL['voz']}")
-    print(f"📤 1 Video Largo (8-12 min) + 2 Shorts (35-42s) | 🎨 Flux SEG_ESCENA={SEG_ESCENA}s")
+    print(f"📤 1 Video Largo (8-12 min) + 2 Shorts ÚNICOS (35-42s) | 🎨 Flux SEG_ESCENA={SEG_ESCENA}s")
     print(f"🛡️  Fallback: Cloudflare → Pool Flux → Pexels → Gradiente")
     print(f"🔍 Verificación anti-short-negro: ACTIVA")
+    print(f"📝 Shorts con guiones LLM únicos: ACTIVO")
+    print(f"📂 Categoría YouTube: Educación (27)")
     print("=" * 70)
 
     actualizar_rendimiento(youtube, estado)
@@ -1708,7 +1788,7 @@ def main():
     total = construir_timeline(segs)
     print(f"⏱️ Duración final: {total/60:.1f} min")
 
-    # ============ IMÁGENES CON 4 NIVELES DE FALLBACK ============
+    # ============ IMÁGENES ============
     print("🎨 Planificando visuales con IA...")
     prompts_visuales = planificar_visuales(segs, tema)
 
@@ -1799,77 +1879,90 @@ def main():
     comentario = str(plan.get("pregunta_comentario") or "¿Qué opinas? Te leo 👇")
     extras_post_subida(youtube, vid, miniatura, srt, comentario)
 
-    # ============ SHORTS ============
+    # ============ SHORTS (v2.4: 2 guiones ÚNICOS) ============
     if GENERAR_SHORT:
-        shorts_creados = []
+        print("📝 Generando 2 guiones ÚNICOS para shorts...")
+        shorts_plan = generar_short_scripts(plan, tema)
 
-        try:
-            print("🎞️ Creando Short Versión 1 (Gancho)...")
-            s1 = crear_short(segs, fondo, 1, "short_1.mp4", modo="gancho")
-            if s1 is None:
-                print("   ⏭️ Short 1 fue SKIPeado (demasiados gradientes). No se sube.")
-            elif not os.path.exists(s1):
-                raise RuntimeError("archivo short_1.mp4 no existe")
-            else:
-                print(f"   ✅ Short 1 renderizado: {os.path.getsize(s1) // 1024} KB")
-                titulo_base = str(plan.get("titulo_short") or titulo)[:88]
-                t_short1 = titulo_base + " #Shorts"
-                kws = plan.get("palabras_clave", [])
-                kw_tag = "#" + _ascii_tag_yt(kws[0]).replace(" ", "") if kws else "#Psicologia"
-                d_short1 = (f"{kws[0].title() if kws else 'Psicología'}: {titulo_base[:60]}\n\n"
-                            f"📺 Video completo 👉 https://youtu.be/{vid}\n\n"
-                            f"🔔 Suscríbete: {CANAL_LINK}?sub_confirmation=1\n\n"
-                            f"#Shorts {kw_tag} {hashtags}" +
-                            (DISCLOSURE_TEXT if ACTIVAR_DISCLOSURE_IA else ""))
-                vid_s1 = subir_video(youtube, "short_1.mp4", t_short1, d_short1,
-                                     tags[:15] + ["shorts"],
-                                     utc_iso(slot_short1) if slot_short1 else None)
-                if not vid_s1:
-                    raise RuntimeError("subir_video no devolvió ID")
-                print(f"✅ Short 1 subido: https://youtu.be/{vid_s1}")
-                shorts_creados.append(("Short 1", vid_s1))
-        except Exception as e:
-            print(f"❌ Short 1 FALLÓ: {type(e).__name__}: {e}")
-            traceback.print_exc()
+        if not shorts_plan:
+            print("⚠️ No se pudieron generar guiones de shorts. Saltando shorts.")
+        else:
+            short1_data = shorts_plan["short1"]
+            short2_data = shorts_plan["short2"]
+            shorts_creados = []
 
-        gc.collect()
-        time.sleep(3)
+            # ---- SHORT 1 (ángulo: PROBLEMA/ADVERTENCIA) ----
+            try:
+                print("🎞️ Creando Short 1...")
+                s1, dur1 = crear_short_con_guion(
+                    short1_data["guion"], short1_data["titulo"], short1_data["hashtags"],
+                    fondo, 1, "short_1.mp4"
+                )
+                if s1 is None:
+                    print("   ⏭️ Short 1 fue SKIPeado. No se sube.")
+                else:
+                    print(f"   ✅ Short 1 renderizado: {os.path.getsize(s1) // 1024} KB")
+                    t_short1 = short1_data["titulo"][:88] + " #Shorts"
+                    d_short1 = (
+                        f"{short1_data['titulo']}\n\n"
+                        f"📺 Video completo 👉 https://youtu.be/{vid}\n\n"
+                        f"🔔 Suscríbete: {CANAL_LINK}?sub_confirmation=1\n\n"
+                        f"#Shorts {short1_data['hashtags']}" +
+                        (DISCLOSURE_TEXT if ACTIVAR_DISCLOSURE_IA else "")
+                    )
+                    vid_s1 = subir_video(
+                        youtube, "short_1.mp4", t_short1, d_short1,
+                        tags[:15] + ["shorts"],
+                        utc_iso(slot_short1) if slot_short1 else None
+                    )
+                    if vid_s1:
+                        print(f"✅ Short 1 subido: https://youtu.be/{vid_s1}")
+                        shorts_creados.append(("Short 1", vid_s1))
+            except Exception as e:
+                print(f"❌ Short 1 FALLÓ: {type(e).__name__}: {e}")
+                traceback.print_exc()
 
-        try:
-            print("🎞️ Creando Short Versión 2 (Clímax)...")
-            s2 = crear_short(segs, fondo, 2, "short_2.mp4", modo="climax")
-            if s2 is None:
-                print("   ⏭️ Short 2 fue SKIPeado (demasiados gradientes). No se sube.")
-            elif not os.path.exists(s2):
-                raise RuntimeError("archivo short_2.mp4 no existe")
-            else:
-                print(f"   ✅ Short 2 renderizado: {os.path.getsize(s2) // 1024} KB")
-                t_short2 = str(plan.get("titulo_short") or titulo)[:80] + " 🤯 #Shorts"
-                kws = plan.get("palabras_clave", [])
-                kw_tag = "#" + _ascii_tag_yt(kws[0]).replace(" ", "") if kws else "#Psicologia"
-                d_short2 = (f"{kws[0].title() if kws else 'Psicología'}: {str(plan.get('titulo_short') or titulo)[:60]}\n\n"
-                            f"📺 Video completo 👉 https://youtu.be/{vid}\n\n"
-                            f"🔔 Suscríbete: {CANAL_LINK}?sub_confirmation=1\n\n"
-                            f"#Shorts {kw_tag} {hashtags}" +
-                            (DISCLOSURE_TEXT if ACTIVAR_DISCLOSURE_IA else ""))
-                vid_s2 = subir_video(youtube, "short_2.mp4", t_short2, d_short2,
-                                     tags[:15] + ["shorts"],
-                                     utc_iso(slot_short2) if slot_short2 else None)
-                if not vid_s2:
-                    raise RuntimeError("subir_video no devolvió ID")
-                print(f"✅ Short 2 subido: https://youtu.be/{vid_s2}")
-                shorts_creados.append(("Short 2", vid_s2))
-        except Exception as e:
-            print(f"❌ Short 2 FALLÓ: {type(e).__name__}: {e}")
-            traceback.print_exc()
+            gc.collect()
+            time.sleep(3)
 
-        print("=" * 70)
-        print(f"📊 RESUMEN SHORTS: {len(shorts_creados)}/2 creados")
-        for nombre, sid in shorts_creados:
-            print(f"   ✅ {nombre}: https://youtu.be/{sid}")
-        if len(shorts_creados) < 2:
-            print(f"   ⚠️ Faltan {2 - len(shorts_creados)} short(s). Revisa el log arriba.")
-        print("=" * 70)
+            # ---- SHORT 2 (ángulo: SOLUCIÓN/PARADOJA) ----
+            try:
+                print("🎞️ Creando Short 2...")
+                s2, dur2 = crear_short_con_guion(
+                    short2_data["guion"], short2_data["titulo"], short2_data["hashtags"],
+                    fondo, 2, "short_2.mp4"
+                )
+                if s2 is None:
+                    print("   ⏭️ Short 2 fue SKIPeado. No se sube.")
+                else:
+                    print(f"   ✅ Short 2 renderizado: {os.path.getsize(s2) // 1024} KB")
+                    t_short2 = short2_data["titulo"][:88] + " #Shorts"
+                    d_short2 = (
+                        f"{short2_data['titulo']}\n\n"
+                        f"📺 Video completo 👉 https://youtu.be/{vid}\n\n"
+                        f"🔔 Suscríbete: {CANAL_LINK}?sub_confirmation=1\n\n"
+                        f"#Shorts {short2_data['hashtags']}" +
+                        (DISCLOSURE_TEXT if ACTIVAR_DISCLOSURE_IA else "")
+                    )
+                    vid_s2 = subir_video(
+                        youtube, "short_2.mp4", t_short2, d_short2,
+                        tags[:15] + ["shorts"],
+                        utc_iso(slot_short2) if slot_short2 else None
+                    )
+                    if vid_s2:
+                        print(f"✅ Short 2 subido: https://youtu.be/{vid_s2}")
+                        shorts_creados.append(("Short 2", vid_s2))
+            except Exception as e:
+                print(f"❌ Short 2 FALLÓ: {type(e).__name__}: {e}")
+                traceback.print_exc()
+
+            print("=" * 70)
+            print(f"📊 RESUMEN SHORTS: {len(shorts_creados)}/2 creados")
+            for nombre, sid in shorts_creados:
+                print(f"   ✅ {nombre}: https://youtu.be/{sid}")
+            if len(shorts_creados) < 2:
+                print(f"   ⚠️ Faltan {2 - len(shorts_creados)} short(s).")
+            print("=" * 70)
 
     ahora = datetime.now(TZ).isoformat()
     guardar_titulo(titulo)
@@ -1887,7 +1980,7 @@ def main():
     guardar_json(ESTADO_FILE, estado)
 
     limpiar_temporales()
-    print("🎉 Proceso completado: 1 video largo + 2 shorts programados.")
+    print("🎉 Proceso completado: 1 video largo + 2 shorts únicos programados.")
 
 if __name__ == "__main__":
     try:
