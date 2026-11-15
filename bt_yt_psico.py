@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-CÓDIGO MENTAL - Bot v3.1 ELITE (ANTI-DEMONETIZACIÓN)
+CÓDIGO MENTAL - Bot v3.2 ELITE (ANTI-DEMONETIZACIÓN + SEO ALTO CTR)
+v3.2 - Inyección de Palabras Semilla de Alto CTR (Curiosity Gap)
+  - Tags inyectados con fórmulas de búsqueda real ("la trampa de", "el error de")
 v3.1 - Blindaje contra Políticas de YouTube (Contenido No Auténtico):
   - Prompt de guion enriquecido con "Casos de Estudio" y "Preguntas Retóricas"
   - Inclusión de Textos en Pantalla (Overlays) para demostrar Edición Creativa
   - Tono estrictamente de "Documental Científico" (evita consejos médicos YMYL)
   - Divulgación de IA explícita (containsSyntheticMedia)
-  - Mantiene la estrategia de Títulos de Curiosidad y Shorts Únicos (v3.0)
 """
 import asyncio
 import bisect
@@ -476,7 +477,7 @@ def elegir_tema(estado, youtube):
     return elegido
 
 # =================================================================
-# TÍTULOS Y MINIATURAS (ESTRATEGIA CURIOSITY GAP v3.1)
+# TÍTULOS Y MINIATURAS (ESTRATEGIA CURIOSITY GAP v3.2)
 # =================================================================
 GANCHOS = [
     "nunca", "nadie", "jamás", "nadie te", "prohibido", "secreto",
@@ -484,6 +485,7 @@ GANCHOS = [
     "cambia", "rompe", "destruye", "mejor", "peor", "por qué",
     "cómo", "si ", "cuando", "5 ", "7 ", "3 ", "10 ", "?", "!",
     "nadie", "evita", "deja de", "empieza a",
+    # ⚡ NUEVOS GANCHOS PSICOLÓGICOS (Estilo Curiosity Gap)
     "la trampa", "el sesgo", "el error", "la mentira", "te sabotea", 
     "tu cerebro", "manipulan", "ocultan", "peligro", "cuidado", 
     "los expertos", "psicología oscura", "señales de", "lo que callan"
@@ -1283,7 +1285,7 @@ def crear_miniatura(img_path, texto, salida):
         return False
 
 # =================================================================
-# SEO ELITE
+# SEO ELITE (CURIOSITY GAP v3.2)
 # =================================================================
 def _ascii_tag_yt(t):
     nfd = unicodedata.normalize('NFD', str(t))
@@ -1298,24 +1300,40 @@ def construir_tags(plan, tema, sugerencias):
     if isinstance(tags_ia, str):
         tags_ia = [x.strip() for x in tags_ia.split(",")]
 
+    # ⚡ 1. TAGS DE ALTA INTENCIÓN (Clickbait Ético)
     exactos = list(tags_ia)[:5]
+    
+    # ⚡ 2. TAGS BROAD (Los que meten al algoritmo)
     broad = ["psicologia", "estoicismo", "desarrollo personal",
-             "inteligencia emocional", "mentalidad"]
+             "inteligencia emocional", "mentalidad", "neurociencia"]
+             
+    # ⚡ 3. TAGS DE CURIOUSITY GAP (Los que generan clics)
+    curiosity_gap = [
+        f"la trampa de {nombre_tema}",
+        f"el error de {nombre_tema}",
+        f"por que tu cerebro hace {nombre_tema}",
+        f"lo que ocultan sobre {nombre_tema}",
+        f"la psicologia de {nombre_tema}",
+    ]
+    
+    # ⚡ 4. TAGS LONG-TAIL
     long_tail = [
         f"psicologia {nombre_tema}",
         f"estoicismo {nombre_tema}",
         f"como {nombre_tema}",
         f"que es {nombre_tema}",
     ]
+    
+    # ⚡ 5. TAGS DE LA NUBE
     preguntas = list(sugerencias)[:3]
     especificos_tema = list(tema["keywords"])[:3]
 
     todos, vistos = [], set()
-    for raw in exactos + broad + long_tail + preguntas + especificos_tema:
+    for raw in exactos + curiosity_gap + long_tail + broad + preguntas + especificos_tema:
         tag = _ascii_tag_yt(raw)
         if not tag or len(tag) < 2 or len(tag) > 40 or tag in vistos:
             continue
-        if any(x in tag for x in ("100 real", "veridico", "caso real")):
+        if any(x in tag for x in ("100 real", "veridico", "caso real", "cura")):
             continue
         vistos.add(tag)
         todos.append(tag)
@@ -1759,7 +1777,7 @@ def main():
         sys.exit(0)
 
     print("=" * 70)
-    print("🧠 CÓDIGO MENTAL - BOT v3.1 (ANTI-DEMONETIZACIÓN)")
+    print("🧠 CÓDIGO MENTAL - BOT v3.2 (ELITE SEO CURIOSITY GAP)")
     print(f"📅 {datetime.now(TZ):%Y-%m-%d %H:%M} | 🎤 {VOZ_CANAL['voz']}")
     print(f"📤 1 Video Largo (8-12 min) + 2 Shorts ÚNICOS (35-42s) | 🎨 Flux + Overlays")
     print(f"🛡️  Blindaje: Casos de Estudio, Preguntas Retóricas y Textos en Pantalla")
