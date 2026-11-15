@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-CÓDIGO MENTAL - Bot v3.2 ELITE (ANTI-DEMONETIZACIÓN + SEO ALTO CTR)
+CÓDIGO MENTAL - Bot v3.3 (SEG_ESCENA=18s para ahorro de Cloudflare)
+v3.3 - SEG_ESCENA pasa de 14.0 → 18.0 segundos (ahorro ~23% de neuronas)
 v3.2 - Inyección de Palabras Semilla de Alto CTR (Curiosity Gap)
-  - Tags inyectados con fórmulas de búsqueda real ("la trampa de", "el error de")
-v3.1 - Blindaje contra Políticas de YouTube (Contenido No Auténtico):
-  - Prompt de guion enriquecido con "Casos de Estudio" y "Preguntas Retóricas"
-  - Inclusión de Textos en Pantalla (Overlays) para demostrar Edición Creativa
-  - Tono estrictamente de "Documental Científico" (evita consejos médicos YMYL)
-  - Divulgación de IA explícita (containsSyntheticMedia)
+v3.1 - Blindaje Anti-Demonetización (Casos de Estudio, Preguntas Retóricas, Overlays)
 """
 import asyncio
 import bisect
@@ -68,11 +64,10 @@ ESTADO_FILE  = "estado_shorts.json"
 TITULOS_FILE = "titulos_publicados.json"
 TEMAS_FILE   = "temas_shorts.json"
 
-# ⚡ CATEGORÍA YOUTUBE: Educación (27)
 CATEGORY_ID = "27"
 
-DURACION_MINIMA_SEGUNDOS = 480   # 8 min
-DURACION_MAXIMA_SEGUNDOS = 720   # 12 min
+DURACION_MINIMA_SEGUNDOS = 480
+DURACION_MAXIMA_SEGUNDOS = 720
 NUM_PUNTOS               = 5
 MAX_INTENTOS_EXPANSION   = 1
 
@@ -80,7 +75,10 @@ SHORT_CONTENT_MIN = 28
 SHORT_CONTENT_MAX = 36
 
 SEG_MAX_PALABRAS = 45
-SEG_ESCENA       = 14.0
+
+# ⚡ v3.3: 18 segundos por imagen (antes 14) → ahorro ~23% de Cloudflare
+SEG_ESCENA       = 18.0
+
 W, H, FPS        = 1920, 1080, 24
 VOL_FONDO        = 0.10
 USAR_IMAGENES_IA = os.getenv("USAR_IMAGENES_IA", "true").lower() == "true"
@@ -130,115 +128,96 @@ TEMAS = [
      "keywords": ["detox dopamina", "dopamina", "motivación", "adicción", "enfoque"],
      "contextos": ["vida moderna", "smartphone", "adicción digital", "productividad"],
      "hashtags": ["#Dopamina", "#Neurociencia"]},
-
     {"tema": "lenguaje_corporal", "seed": "lenguaje corporal",
      "angulo": "Las señales no verbales que revelan lo que la gente realmente piensa.",
      "keywords": ["lenguaje corporal", "señales", "comunicación no verbal", "psicología"],
      "contextos": ["oficina", "negociación", "reunión", "entrevista"],
      "hashtags": ["#LenguajeCorporal", "#Psicologia"]},
-
     {"tema": "psicologia_oscura", "seed": "psicología oscura",
      "angulo": "Las técnicas de manipulación que usan los manipuladores y cómo defenderte.",
      "keywords": ["psicología oscura", "manipulación", "narcisismo", "gaslighting"],
      "contextos": ["relaciones", "trabajo", "familia", "amistad"],
      "hashtags": ["#PsicologiaOscura", "#Manipulacion"]},
-
     {"tema": "estoicismo", "seed": "estoicismo",
      "angulo": "Cómo aplicar la sabiduría de Marco Aurelio al caos moderno.",
      "keywords": ["estoicismo", "marco aurelio", "seneca", "filosofia", "disciplina"],
      "contextos": ["vida moderna", "trabajo", "relaciones", "fracaso"],
      "hashtags": ["#Estoicismo", "#MarcoAurelio"]},
-
     {"tema": "habitos_atomicos", "seed": "hábitos atómicos",
      "angulo": "Cómo construir hábitos que duran y eliminar los que te destruyen.",
      "keywords": ["hábitos", "habitos atomicos", "productividad", "rutinas"],
      "contextos": ["mañana", "trabajo", "ejercicio", "estudio"],
      "hashtags": ["#Habitos", "#Productividad"]},
-
     {"tema": "ansiedad", "seed": "ansiedad",
      "angulo": "Cómo calmar tu mente ansiosa con técnicas basadas en neurociencia.",
      "keywords": ["ansiedad", "estrés", "respiración", "mindfulness"],
      "contextos": ["vida diaria", "trabajo", "relaciones", "insomnio"],
      "hashtags": ["#Ansiedad", "#SaludMental"]},
-
     {"tema": "concentracion", "seed": "concentración profunda",
      "angulo": "Cómo recuperar la capacidad de concentrarte en un mundo de distracciones.",
      "keywords": ["concentración", "foco", "deep work", "productividad"],
      "contextos": ["trabajo", "estudio", "oficina", "home office"],
      "hashtags": ["#Concentracion", "#DeepWork"]},
-
     {"tema": "inteligencia_emocional", "seed": "inteligencia emocional",
      "angulo": "Cómo dominar tus emociones en lugar de que ellas te dominen a ti.",
      "keywords": ["inteligencia emocional", "emociones", "autocontrol", "empatia"],
      "contextos": ["relaciones", "trabajo", "familia", "conflicto"],
      "hashtags": ["#InteligenciaEmocional", "#Emociones"]},
-
     {"tema": "sesgos_cognitivos", "seed": "sesgos cognitivos",
      "angulo": "Los sesgos que tu cerebro usa para engañarte todos los días.",
      "keywords": ["sesgos cognitivos", "pensamiento", "psicología", "decisión"],
      "contextos": ["decisiones", "compras", "relaciones", "política"],
      "hashtags": ["#SesgosCognitivos", "#Psicologia"]},
-
     {"tema": "memoria", "seed": "técnicas de memoria",
      "angulo": "Cómo aprender más rápido usando el método de los campeones de memoria.",
      "keywords": ["memoria", "aprendizaje", "estudio", "técnicas"],
      "contextos": ["estudio", "examen", "trabajo", "idiomas"],
      "hashtags": ["#Memoria", "#Aprendizaje"]},
-
     {"tema": "sueno", "seed": "sueño y rendimiento",
      "angulo": "Cómo dormir mejor para rendir al máximo al día siguiente.",
      "keywords": ["sueño", "dormir bien", "descanso", "rendimiento"],
      "contextos": ["recámara", "rutina nocturna", "insomnio", "energía"],
      "hashtags": ["#Sueño", "#Descanso"]},
-
     {"tema": "disciplina", "seed": "disciplina y fuerza de voluntad",
      "angulo": "Cómo construir una disciplina que no depende de la motivación.",
      "keywords": ["disciplina", "fuerza de voluntad", "autocontrol", "consistencia"],
      "contextos": ["vida diaria", "ejercicio", "trabajo", "hábitos"],
      "hashtags": ["#Disciplina", "#Autocontrol"]},
-
     {"tema": "banderas_rojas", "seed": "banderas rojas en relaciones",
      "angulo": "Las señales de alarma que debes detectar antes de que sea tarde.",
      "keywords": ["banderas rojas", "relaciones toxicas", "narcisismo", "manipulacion"],
      "contextos": ["pareja", "amistad", "trabajo", "familia"],
      "hashtags": ["#BanderasRojas", "#Relaciones"]},
-
     {"tema": "procrastinacion", "seed": "procrastinación",
      "angulo": "Por qué procrastinas y cómo hackear tu cerebro para dejar de hacerlo.",
      "keywords": ["procrastinación", "productividad", "postergar", "motivacion"],
      "contextos": ["trabajo", "estudio", "tareas", "metas"],
      "hashtags": ["#Procrastinacion", "#Productividad"]},
-
     {"tema": "soledad", "seed": "soledad y crecimiento",
      "angulo": "Cómo transformar la soledad en tu mayor ventaja competitiva.",
      "keywords": ["soledad", "autoconocimiento", "crecimiento", "independencia"],
      "contextos": ["vida moderna", "trabajo remoto", "transiciones", "silencio"],
      "hashtags": ["#Soledad", "#Crecimiento"]},
-
     {"tema": "carisma", "seed": "carisma y presencia",
      "angulo": "Los hábitos que hacen que las personas magnéticas te escuchen.",
      "keywords": ["carisma", "presencia", "influencia", "confianza"],
      "contextos": ["reuniones", "presentaciones", "entrevistas", "networking"],
      "hashtags": ["#Carisma", "#Influencia"]},
-
     {"tema": "dinero_mentalidad", "seed": "mentalidad de dinero",
      "angulo": "Los patrones psicológicos que separan a ricos de pobres.",
      "keywords": ["mentalidad de dinero", "riqueza", "psicología financiera", "abundancia"],
      "contextos": ["finanzas", "inversión", "trabajo", "hábitos"],
      "hashtags": ["#Mentalidad", "#Dinero"]},
-
     {"tema": "estoicismo_amor", "seed": "estoicismo y amor",
      "angulo": "Cómo amar sin perderte usando la sabiduría estoica.",
      "keywords": ["estoicismo", "amor", "relaciones", "desapego"],
      "contextos": ["pareja", "ruptura", "autoconocimiento", "relaciones"],
      "hashtags": ["#Estoicismo", "#Amor"]},
-
     {"tema": "mentalidad_crecimiento", "seed": "mentalidad de crecimiento",
      "angulo": "Cómo cambiar tu mentalidad fija por una de crecimiento (Carol Dweck).",
      "keywords": ["mentalidad de crecimiento", "fixed mindset", "aprendizaje", "fracaso"],
      "contextos": ["estudio", "trabajo", "metas", "fracaso"],
      "hashtags": ["#MentalidadDeCrecimiento", "#Psicologia"]},
-
     {"tema": "miedo_al_rechazo", "seed": "miedo al rechazo",
      "angulo": "Cómo superar el miedo a lo que los demás piensan de ti.",
      "keywords": ["miedo al rechazo", "autoestima", "aprobación", "confianza"],
@@ -485,9 +464,8 @@ GANCHOS = [
     "cambia", "rompe", "destruye", "mejor", "peor", "por qué",
     "cómo", "si ", "cuando", "5 ", "7 ", "3 ", "10 ", "?", "!",
     "nadie", "evita", "deja de", "empieza a",
-    # ⚡ NUEVOS GANCHOS PSICOLÓGICOS (Estilo Curiosity Gap)
-    "la trampa", "el sesgo", "el error", "la mentira", "te sabotea", 
-    "tu cerebro", "manipulan", "ocultan", "peligro", "cuidado", 
+    "la trampa", "el sesgo", "el error", "la mentira", "te sabotea",
+    "tu cerebro", "manipulan", "ocultan", "peligro", "cuidado",
     "los expertos", "psicología oscura", "señales de", "lo que callan"
 ]
 PROHIBIDAS = ["testimonio real", "caso real", "100% real", "verídico", "comprobado",
@@ -566,9 +544,9 @@ def elegir_titulo(candidatos, dato_contraintuitivo=""):
 def elegir_texto_portada(opciones, titulo):
     pt = set(re.findall(r"\w+", titulo.lower()))
     mejor = None
-    
+
     fallbacks_virales = ["TE MIENTEN", "PELIGRO", "OCULTAN", "TRAMPA", "TU CEREBRO", "NO LO HAGAS", "MANIPULAN"]
-    
+
     for o in opciones or []:
         if not isinstance(o, str):
             continue
@@ -578,20 +556,20 @@ def elegir_texto_portada(opciones, titulo):
             continue
         solape = len({x.lower() for x in w} & pt) / len(w)
         sc = (3 if len(w) in (2, 3) else 1) - 2 * solape + (1 if "?" in o else 0)
-        
+
         if any(x in o for x in ["MIENTEN", "PELIGRO", "OCULTAN", "TRAMPA", "CEREBRO", "MANIPULAN", "ERROR"]):
             sc += 5
-            
+
         if mejor is None or sc > mejor[0]:
             mejor = (sc, o)
-            
+
     if not mejor:
         return random.choice(fallbacks_virales)
-        
+
     return mejor[1]
 
 # =================================================================
-# GENERACIÓN DE CONTENIDO (v3.1 - TOQUE HUMANO / CASOS DE ESTUDIO)
+# GENERACIÓN DE CONTENIDO
 # =================================================================
 ESQUEMA_PLAN = """{
  "titulos": ["6 títulos de 45-68 caracteres con ESTRUCTURA DISTINTA. NUNCA termines con '| Psicología'. AL MENOS 3 deben incluir GANCHOS DE CURIOSIDAD ('La trampa psicológica...', 'El error que...', 'Por qué tu cerebro te sabotea...') o el dato_contraintuitivo."],
@@ -688,7 +666,6 @@ def generar_puntos(plan, tema, contexto):
             extra = (f"Conecta con el punto anterior y asegúrate de que el dato "
                      f"contraintuitivo '{dato_c}' se mencione si encaja.")
 
-        # ⚡ v3.1: PROMPT CON CASO DE ESTUDIO Y PREGUNTA RETÓRICA
         prompt = f"""Escribe el PUNTO {i+1} de {len(puntos)} de un documental educativo de psicología.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FORMATO: {nombre_fmt.upper()}
@@ -1006,25 +983,22 @@ Responde SOLO JSON: {{"consultas": ["..."]}} con exactamente {len(lote)} element
     return out
 
 # =================================================================
-# APLICAR TEXTO OVERLAY (v3.1 - EDICIÓN CREATIVA)
+# APLICAR TEXTO OVERLAY
 # =================================================================
 def aplicar_texto_overlay(img_path, output_path, texto):
-    """Añade texto grande en la parte superior de la imagen para demostrar edición."""
     try:
         with Image.open(img_path) as img:
             if img.mode != "RGB":
                 img = img.convert("RGB")
             draw = ImageDraw.Draw(img)
             w, h = img.size
-            
-            # Configurar fuente
+
             font = None
             for path in [
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                 "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             ]:
                 try:
-                    # Ajustar tamaño según la resolución de la imagen
                     size = int(w * 0.08)
                     font = ImageFont.truetype(path, size)
                     break
@@ -1038,19 +1012,17 @@ def aplicar_texto_overlay(img_path, output_path, texto):
             lw = bb[2] - bb[0]
             lh = bb[3] - bb[1]
             x = (w - lw) // 2
-            y = int(h * 0.1) # 10% desde arriba
+            y = int(h * 0.1)
 
-            # Dibujar caja negra semi-transparente
             overlay = Image.new("RGBA", img.size, (0,0,0,0))
             od = ImageDraw.Draw(overlay)
             pad = int(w * 0.02)
             od.rectangle([x-pad, y-pad, x+lw+pad, y+lh+pad*2], fill=(0,0,0,200))
             img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
-            
-            # Dibujar texto con borde grueso para que resalte
+
             draw = ImageDraw.Draw(img)
             stroke_w = max(3, int(w * 0.005))
-            draw.text((x, y), texto, font=font, fill=(255, 215, 0), 
+            draw.text((x, y), texto, font=font, fill=(255, 215, 0),
                       stroke_width=stroke_w, stroke_fill=(0,0,0))
 
             img.save(output_path, "JPEG", quality=92)
@@ -1127,15 +1099,12 @@ class RenderEscenas:
         return fr
 
 def construir_escenas(segs, palabras_por_imagen):
-    """Construye escenas inyectando textos overlay."""
     esc = []
     for s in segs:
         n_imgs = max(1, round(s["dur_audio"] / SEG_ESCENA))
         dur_por_img = s["dur"] / n_imgs
         for k in range(n_imgs):
-            # Tomar una palabra clave al azar de las palabras reservadas para overlay
             overlay_text = random.choice(palabras_por_imagen)
-            
             esc.append({
                 "path": s["medios"][k % len(s["medios"])],
                 "inicio": s["inicio"] + k * dur_por_img,
@@ -1165,14 +1134,13 @@ def mezclar_audio(segs, total, fondo, extras=()):
     return CompositeAudioClip(capas).set_duration(total), clips
 
 def renderizar(escenas, total, audio, size, salida, sufijo=""):
-    # Aplicar Overlays ANTES de renderizar
     for e in escenas:
         if e.get("overlay"):
             img_temp = e["path"]
             img_out  = e["path"].replace(".jpg", f"_ovl_{random.randint(1,999)}.jpg")
             if aplicar_texto_overlay(img_temp, img_out, e["overlay"]):
-                e["path"] = img_out # Reemplazar por la imagen editada
-                
+                e["path"] = img_out
+
     render = RenderEscenas(escenas, size, total)
     video = VideoClip(render.frame, duration=total).set_audio(audio)
     temp_audio = f"temp_audio_final{sufijo}.m4a"
@@ -1300,14 +1268,11 @@ def construir_tags(plan, tema, sugerencias):
     if isinstance(tags_ia, str):
         tags_ia = [x.strip() for x in tags_ia.split(",")]
 
-    # ⚡ 1. TAGS DE ALTA INTENCIÓN (Clickbait Ético)
     exactos = list(tags_ia)[:5]
-    
-    # ⚡ 2. TAGS BROAD (Los que meten al algoritmo)
+
     broad = ["psicologia", "estoicismo", "desarrollo personal",
              "inteligencia emocional", "mentalidad", "neurociencia"]
-             
-    # ⚡ 3. TAGS DE CURIOUSITY GAP (Los que generan clics)
+
     curiosity_gap = [
         f"la trampa de {nombre_tema}",
         f"el error de {nombre_tema}",
@@ -1315,16 +1280,14 @@ def construir_tags(plan, tema, sugerencias):
         f"lo que ocultan sobre {nombre_tema}",
         f"la psicologia de {nombre_tema}",
     ]
-    
-    # ⚡ 4. TAGS LONG-TAIL
+
     long_tail = [
         f"psicologia {nombre_tema}",
         f"estoicismo {nombre_tema}",
         f"como {nombre_tema}",
         f"que es {nombre_tema}",
     ]
-    
-    # ⚡ 5. TAGS DE LA NUBE
+
     preguntas = list(sugerencias)[:3]
     especificos_tema = list(tema["keywords"])[:3]
 
@@ -1541,10 +1504,9 @@ def extras_post_subida(youtube, vid, miniatura, srt, comentario):
             print(f"⚠️ Comentario: {e}\n   Para fijar: {comentario}")
 
 # =================================================================
-# SHORTS (v3.0: 2 guiones ÚNICOS + Pattern Interrupt)
+# SHORTS
 # =================================================================
 def generar_short_scripts(plan, tema):
-    """Genera 2 guiones DIFERENTES para 2 shorts, cada uno con un ángulo y gancho único."""
     puntos_lista = "\n".join(
         f"- {p.get('titulo','')}: {p.get('resumen','')}"
         for p in plan.get("puntos", [])
@@ -1562,12 +1524,12 @@ VIDEO LARGO:
 
 ━━━ SHORT 1 (ángulo: PROBLEMA/ADVERTENCIA) ━━━
 - Título: máx 55 chars, contiene el dato contraintuitivo o una advertencia.
-- Guion: 80-100 palabras. EMPIEZA CON UN PATTERN INTERRUPT (ej: "Si haces esto, estás fallando", "El 90% comete este error").
+- Guion: 80-100 palabras. EMPIEZA CON UN PATTERN INTERRUPT.
 - Hashtags: 4-5 hashtags específicos del short.
 
 ━━━ SHORT 2 (ángulo: SOLUCIÓN/PARADOJA) ━━━
 - Título: DIFERENTE al short 1, máx 55 chars, contiene una PARADOJA o SOLUCIÓN.
-- Guion: 80-100 palabras. Empieza con la paradoja, cierra con aplicación práctica.
+- Guion: 80-100 palabras.
 - Hashtags: 4-5 hashtags DISTINTOS o parcialmente distintos al short 1.
 
 ━━━ REGLAS CRÍTICAS ━━━
@@ -1599,7 +1561,7 @@ Responde SOLO JSON:
             if not all(f in s for f in ("titulo", "guion", "hashtags")):
                 raise ValueError(f"{k} incompleto")
             if len(s["guion"].split()) < 50:
-                raise ValueError(f"{k} guion muy corto ({len(s['guion'].split())} palabras)")
+                raise ValueError(f"{k} guion muy corto")
         t1 = data["short1"]["titulo"].lower().strip()
         t2 = data["short2"]["titulo"].lower().strip()
         if t1 == t2:
@@ -1663,11 +1625,10 @@ def crear_short_con_guion(guion_texto, titulo_short, hashtags_short, fondo, indi
 
     cta_texto = random.choice(CTA_SHORTS)
     cta = generar_audio(cta_texto, f"cta_{indice}", "conclusion")
-    
-    # Overlays para shorts
+
     palabras_overlay = ["DATO CLAVE", "ERROR MENTAL", "ESTUDIO", "CIENCIA"]
     escenas = construir_escenas(segs, palabras_overlay)
-    
+
     extras, total_final = [], total
     if cta:
         d = duracion_audio(cta)
@@ -1677,7 +1638,7 @@ def crear_short_con_guion(guion_texto, titulo_short, hashtags_short, fondo, indi
         total_final = total + d + 0.6
     audio, _ = mezclar_audio(segs, total_final, fondo, extras)
     print(f"   📊 Short {indice} total: {total_final:.1f}s")
-    
+
     renderizar(escenas, total_final, audio, (1080, 1920), salida, sufijo=f"_s{indice}")
     return salida, total_final
 
@@ -1777,10 +1738,10 @@ def main():
         sys.exit(0)
 
     print("=" * 70)
-    print("🧠 CÓDIGO MENTAL - BOT v3.2 (ELITE SEO CURIOSITY GAP)")
+    print("🧠 CÓDIGO MENTAL - BOT v3.3 (SEG_ESCENA=18s)")
     print(f"📅 {datetime.now(TZ):%Y-%m-%d %H:%M} | 🎤 {VOZ_CANAL['voz']}")
-    print(f"📤 1 Video Largo (8-12 min) + 2 Shorts ÚNICOS (35-42s) | 🎨 Flux + Overlays")
-    print(f"🛡️  Blindaje: Casos de Estudio, Preguntas Retóricas y Textos en Pantalla")
+    print(f"📤 1 Video Largo (8-12 min) + 2 Shorts | 🎨 Flux SEG_ESCENA={SEG_ESCENA}s")
+    print(f"🛡️  Blindaje: Casos de Estudio + Overlays + Curiosity Gap SEO")
     print(f"📂 Categoría YouTube: Educación (27)")
     print("=" * 70)
 
@@ -1863,7 +1824,6 @@ def main():
     total = construir_timeline(segs)
     print(f"⏱️ Duración final: {total/60:.1f} min")
 
-    # ============ IMÁGENES CON 4 NIVELES DE FALLBACK ============
     print("🎨 Planificando visuales con IA...")
     prompts_visuales = planificar_visuales(segs, tema)
 
@@ -1930,7 +1890,6 @@ def main():
         base_mini = imagen_fallback("thumb_mini")
     miniatura = "miniatura.jpg" if crear_miniatura(base_mini, portada, "miniatura.jpg") else None
 
-    # ============ OVERLAYS Y RENDER LARGO ============
     palabras_overlay_largo = ["DATO CLAVE", "ESTUDIO CIENTÍFICO", "ERROR MENTAL", "EVIDENCIA", "LA CIENCIA DICE"]
     escenas = construir_escenas(segs, palabras_overlay_largo)
     audio, _ = mezclar_audio(segs, total, fondo)
@@ -1956,7 +1915,6 @@ def main():
     comentario = str(plan.get("pregunta_comentario") or "¿Qué opinas? Te leo 👇")
     extras_post_subida(youtube, vid, miniatura, srt, comentario)
 
-    # ============ SHORTS ============
     if GENERAR_SHORT:
         print("📝 Generando 2 guiones ÚNICOS para shorts...")
         shorts_plan = generar_short_scripts(plan, tema)
@@ -1968,7 +1926,6 @@ def main():
             short2_data = shorts_plan["short2"]
             shorts_creados = []
 
-            # ---- SHORT 1 (ángulo: PROBLEMA/ADVERTENCIA) ----
             try:
                 print("🎞️ Creando Short 1...")
                 s1, dur1 = crear_short_con_guion(
@@ -2002,7 +1959,6 @@ def main():
             gc.collect()
             time.sleep(3)
 
-            # ---- SHORT 2 (ángulo: SOLUCIÓN/PARADOJA) ----
             try:
                 print("🎞️ Creando Short 2...")
                 s2, dur2 = crear_short_con_guion(
