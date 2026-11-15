@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-CÓDIGO MENTAL - Bot v3.3 (SEG_ESCENA=18s para ahorro de Cloudflare)
-v3.3 - SEG_ESCENA pasa de 14.0 → 18.0 segundos (ahorro ~23% de neuronas)
-v3.2 - Inyección de Palabras Semilla de Alto CTR (Curiosity Gap)
-v3.1 - Blindaje Anti-Demonetización (Casos de Estudio, Preguntas Retóricas, Overlays)
+CÓDIGO MENTAL - Bot v3.4 SAYAYIN
+v3.4 - MINIATURAS ÉLITE: Rostro humano con emoción + texto gigante + composición profesional
+  - Sistema de 5 estilos rotativos (Shock, Revelación, Miedo, Duda, Curiosidad)
+  - Rostro real de Pexels (60% izquierda) + texto (40% derecha)
+  - Paleta agresiva con stroke negro grueso + glow neón
+  - Elemento de urgencia (flecha roja, círculo, exclamación)
+  - Prioriza palabras de alto impacto: TRAMPA, TE MIENTEN, SESGO, MENTIRA
+v3.3 - SEG_ESCENA=18s (ahorro Cloudflare)
+v3.2 - SEO élite 4 capas + 5 bloques tags + Curiosity Gap
+v3.1 - Blindaje Anti-Demonetización
 """
 import asyncio
 import bisect
@@ -75,10 +81,7 @@ SHORT_CONTENT_MIN = 28
 SHORT_CONTENT_MAX = 36
 
 SEG_MAX_PALABRAS = 45
-
-# ⚡ v3.3: 18 segundos por imagen (antes 14) → ahorro ~23% de Cloudflare
 SEG_ESCENA       = 18.0
-
 W, H, FPS        = 1920, 1080, 24
 VOL_FONDO        = 0.10
 USAR_IMAGENES_IA = os.getenv("USAR_IMAGENES_IA", "true").lower() == "true"
@@ -456,7 +459,7 @@ def elegir_tema(estado, youtube):
     return elegido
 
 # =================================================================
-# TÍTULOS Y MINIATURAS (ESTRATEGIA CURIOSITY GAP v3.2)
+# TÍTULOS Y MINIATURAS (SEO ÉLITE v3.4)
 # =================================================================
 GANCHOS = [
     "nunca", "nadie", "jamás", "nadie te", "prohibido", "secreto",
@@ -488,41 +491,60 @@ def limpiar_titulo(t):
 def puntuar_titulo(t, dato_contraintuitivo=""):
     s, n, tl = 0, len(t), t.lower()
     if 45 <= n <= 68:
+        s += 6
+    elif 40 <= n < 45 or 68 < n <= 75:
         s += 4
-    elif 30 <= n < 45 or 68 < n <= 80:
+    elif 30 <= n < 40 or 75 < n <= 80:
         s += 2
     elif n > 95 or n < 25:
-        s -= 6
-    if re.search(r"\d", t):
-        s += 2
-    s += min(3, sum(1 for g in GANCHOS if g in tl))
+        s -= 8
+    else:
+        s -= 2
 
-    if re.search(r'\bsi\b.{1,60}(nunca|no\s)', tl, re.I | re.S):
-        s += 6
-    if re.search(r'\b\d{1,2}\s+(señales|habitos|hábitos|claves|trucos|reglas|formas|maneras|razones)', tl):
-        s += 4
+    ganchos_encontrados = sum(1 for g in GANCHOS if g in tl)
+    s += min(8, ganchos_encontrados * 2)
+
+    if re.search(r"\d", t):
+        s += 3
+    if re.search(r"\b\d{2,}\b", t):
+        s += 2
+    caps = re.findall(r"\b[A-ZÁÉÍÓÚÑ]{3,}\b", t)
+    if 1 <= len(caps) <= 3:
+        s += 3
+    elif len(caps) > 4:
+        s -= 3
 
     if re.search(r'\b(la trampa|el sesgo|el error|la mentira|te sabotea|tu cerebro|manipulan|ocultan|lo que callan)\b', tl):
         s += 10
 
     if dato_contraintuitivo:
         dc_words = set(re.findall(r"\w+", dato_contraintuitivo.lower())) - {
-            "de", "la", "el", "que", "y", "en", "un", "una", "por", "para", "con", "los", "las"}
+            "de", "la", "el", "que", "y", "en", "un", "una",
+            "por", "para", "con", "los", "las"}
         tit_words = set(re.findall(r"\w+", tl))
-        if len(dc_words & tit_words) >= 2:
-            s += 5
+        solape = len(dc_words & tit_words)
+        if solape >= 3:
+            s += 6
+        elif solape >= 2:
+            s += 4
+        elif solape >= 1:
+            s += 2
 
+    if re.search(r'\bsi\b.{1,60}(nunca|no\s)', tl, re.I | re.S):
+        s += 6
     if re.search(r'\b(menos|peor|nunca|deja de|evita|no hagas|no debes)\b', tl):
         s += 3
+    if "?" in t:
+        s += 4
 
-    caps = re.findall(r"\b[A-ZÁÉÍÓÚÑ]{4,}\b", t)
-    s += 2 if 1 <= len(caps) <= 2 else (-3 if len(caps) > 3 else 0)
     if any(p in tl for p in PROHIBIDAS):
-        s -= 8
+        s -= 10
     if any(tl.startswith(g) for g in GENERICAS):
-        s -= 6
+        s -= 8
     if "!" in t:
-        s -= 1
+        s -= 2
+    if any(ord(c) > 0x1F000 for c in t):
+        s -= 5
     return s
 
 def elegir_titulo(candidatos, dato_contraintuitivo=""):
@@ -537,15 +559,19 @@ def elegir_titulo(candidatos, dato_contraintuitivo=""):
     if not puntuados:
         return None
     puntuados.sort(reverse=True)
-    for sc, t in puntuados[:4]:
+    for sc, t in puntuados[:5]:
         print(f"   📝 [{sc:>2}] {t}")
     return puntuados[0][1][:100]
 
 def elegir_texto_portada(opciones, titulo):
+    """v3.4: Prioriza palabras de alto impacto psicológico."""
     pt = set(re.findall(r"\w+", titulo.lower()))
     mejor = None
 
-    fallbacks_virales = ["TE MIENTEN", "PELIGRO", "OCULTAN", "TRAMPA", "TU CEREBRO", "NO LO HAGAS", "MANIPULAN"]
+    fallbacks_virales = [
+        "TE MIENTEN", "TRAMPA", "EL SESGO", "OCULTAN", "EL ERROR",
+        "TU CEREBRO", "NO LO HAGAS", "MANIPULAN", "MENTIRA", "TE SABOTEA"
+    ]
 
     for o in opciones or []:
         if not isinstance(o, str):
@@ -557,7 +583,9 @@ def elegir_texto_portada(opciones, titulo):
         solape = len({x.lower() for x in w} & pt) / len(w)
         sc = (3 if len(w) in (2, 3) else 1) - 2 * solape + (1 if "?" in o else 0)
 
-        if any(x in o for x in ["MIENTEN", "PELIGRO", "OCULTAN", "TRAMPA", "CEREBRO", "MANIPULAN", "ERROR"]):
+        if any(x in o for x in ["MIENTEN", "PELIGRO", "OCULTAN", "TRAMPA",
+                                 "CEREBRO", "MANIPULAN", "ERROR", "SESGO",
+                                 "MENTIRA", "SABOTEA"]):
             sc += 5
 
         if mejor is None or sc > mejor[0]:
@@ -580,7 +608,7 @@ ESQUEMA_PLAN = """{
  "gancho": "1-2 frases (máx 35 palabras) que abren el video con el dato_contraintuitivo en primera persona. DEBE GENERAR CURIOSIDAD INMEDIATA.",
  "resumen": "sinopsis de 2-3 oraciones sin spoilers",
  "palabras_clave": ["5 keywords SEO en español, la primera es el keyword principal del video"],
- "palabras_portada": ["3 opciones de 2-3 palabras EN MAYÚSCULAS (ej: TE MIENTEN, PELIGRO, EL SESGO, TRAMPA MENTAL)"],
+ "palabras_portada": ["3 opciones de 2-3 palabras EN MAYÚSCULAS (ej: TE MIENTEN, PELIGRO, EL SESGO, TRAMPA MENTAL, MANIPULAN)"],
  "miniatura_escena": "4-6 palabras en inglés para buscar/imagen (ej: brain scan, nervous person meeting, two people arguing)",
  "descripcion_gancho": "2 líneas: la primera con el keyword principal y una promesa concreta; la segunda invita a suscribirse",
  "titulo_short": "gancho de máx 55 caracteres para YouTube Short",
@@ -932,7 +960,7 @@ def imagen_fallback_pexels(prompt_en, idx):
     return None
 
 # =================================================================
-# GRADIENTE OSCURO (fallback nivel 4)
+# GRADIENTE OSCURO
 # =================================================================
 def imagen_fallback(idx):
     img = Image.new("RGB", (W, H), (10, 15, 25))
@@ -1160,7 +1188,7 @@ def renderizar(escenas, total, audio, size, salida, sufijo=""):
     return salida
 
 # =================================================================
-# MINIATURA
+# MINIATURAS ÉLITE v3.4 (ROSTRO + TEXTO + COMPOSICIÓN)
 # =================================================================
 def obtener_fuente(size):
     os.makedirs("fonts", exist_ok=True)
@@ -1181,6 +1209,137 @@ def obtener_fuente(size):
             continue
     return ImageFont.load_default()
 
+def buscar_rostro_emocional_pexels(query_base=""):
+    """v3.4: Busca rostro con expresión psicológica fuerte."""
+    if not PEXELS_API_KEY:
+        return None
+
+    queries = [
+        "shocked man face dark",
+        "surprised woman portrait dark",
+        "confused person face dark",
+        "worried man portrait dark",
+        "thinking woman face dark",
+        "amazed man face closeup",
+        "concerned person face dark",
+        "thoughtful man portrait",
+    ]
+    if query_base:
+        queries = [query_base + " face portrait dark"] + queries
+
+    random.shuffle(queries)
+    for q in queries[:6]:
+        try:
+            data = pexels_get(
+                "https://api.pexels.com/v1/search",
+                {"query": q, "orientation": "portrait", "size": "large",
+                 "per_page": 8, "page": 1}
+            )
+            fotos = (data or {}).get("photos", [])
+            if not fotos:
+                continue
+            candidatas = [
+                f for f in fotos
+                if f["src"]["large2x"] not in USADOS_PEXELS
+                and f.get("width", 0) > 1000
+            ]
+            if not candidatas:
+                continue
+            foto = random.choice(candidatas[:4])
+            url = foto["src"]["large2x"]
+            ruta = f"temp_thumb_rostro_{random.randint(1000,9999)}.jpg"
+            if descargar(url, ruta, 15 * 1024 * 1024):
+                USADOS_PEXELS.add(url)
+                print(f"   👤 Rostro emocional encontrado: {q}")
+                return ruta
+        except Exception as e:
+            print(f"   ⚠️ Query '{q}': {e}")
+            continue
+    return None
+
+def buscar_cuerpo_emocional_pexels(query_base=""):
+    """v3.4: Fallback si no hay rostros."""
+    if not PEXELS_API_KEY:
+        return None
+
+    queries = [
+        "person touching head stressed dark",
+        "hands holding phone dark",
+        "silhouette person thinking dark",
+        "person writing journal dark",
+        "hands on face stress",
+        "person alone window night",
+    ]
+    if query_base:
+        queries = [query_base + " person dark"] + queries
+
+    random.shuffle(queries)
+    for q in queries[:5]:
+        try:
+            data = pexels_get(
+                "https://api.pexels.com/v1/search",
+                {"query": q, "orientation": "landscape", "size": "large",
+                 "per_page": 8, "page": 1}
+            )
+            fotos = (data or {}).get("photos", [])
+            if not fotos:
+                continue
+            candidatas = [f for f in fotos if f["src"]["large2x"] not in USADOS_PEXELS]
+            if not candidatas:
+                continue
+            foto = random.choice(candidatas[:4])
+            url = foto["src"]["large2x"]
+            ruta = f"temp_thumb_cuerpo_{random.randint(1000,9999)}.jpg"
+            if descargar(url, ruta, 15 * 1024 * 1024):
+                USADOS_PEXELS.add(url)
+                print(f"   🖐️ Cuerpo emocional encontrado: {q}")
+                return ruta
+        except Exception as e:
+            print(f"   ⚠️ Query '{q}': {e}")
+            continue
+    return None
+
+def elegir_estilo_miniatura():
+    """v3.4: 5 estilos rotativos psicológicos."""
+    estilos = [
+        {
+            "nombre": "shock_rojo",
+            "color_texto": (255, 255, 255),
+            "color_acento": (255, 30, 30),
+            "stroke": (0, 0, 0),
+            "elemento": "flecha_roja",
+        },
+        {
+            "nombre": "revelacion_amarillo",
+            "color_texto": (255, 220, 0),
+            "color_acento": (255, 255, 255),
+            "stroke": (0, 0, 0),
+            "elemento": "circulo",
+        },
+        {
+            "nombre": "miedo_cyan",
+            "color_texto": (0, 255, 255),
+            "color_acento": (255, 255, 255),
+            "stroke": (0, 0, 0),
+            "elemento": "ninguno",
+        },
+        {
+            "nombre": "duda_blanco",
+            "color_texto": (255, 255, 255),
+            "color_acento": (255, 140, 0),
+            "stroke": (0, 0, 0),
+            "elemento": "exclamacion",
+        },
+        {
+            "nombre": "curiosidad_naranja",
+            "color_texto": (255, 140, 0),
+            "color_acento": (255, 255, 0),
+            "stroke": (0, 0, 0),
+            "elemento": "flecha_roja",
+        },
+    ]
+    return random.choice(estilos)
+
 def dividir_lineas(palabras):
     if len(palabras) <= 2:
         return palabras[:]
@@ -1192,68 +1351,152 @@ def dividir_lineas(palabras):
             mejor = (m, [a, b])
     return mejor[1]
 
-def crear_miniatura(img_path, texto, salida):
+def crear_miniatura_v34(img_rostro_path, texto, salida, estilo=None):
+    """v3.4: Composición rostro izquierda + texto derecha + elementos urgencia."""
     TW, TH = 1280, 720
+    estilo = estilo or elegir_estilo_miniatura()
+
     try:
-        img = Image.open(img_path).convert("RGB") if img_path else Image.new("RGB", (TW, TH), (10, 10, 20))
-        img = ImageOps.fit(img, (TW, TH), Image.LANCZOS)
-        img = ImageEnhance.Contrast(img).enhance(1.45)
-        img = ImageEnhance.Color(img).enhance(1.35)
-        img = ImageEnhance.Sharpness(img).enhance(2.0)
+        if img_rostro_path and os.path.exists(img_rostro_path):
+            img = Image.open(img_rostro_path).convert("RGB")
+            if img.width < img.height:
+                img_rostro = ImageOps.fit(
+                    img,
+                    (int(TW * 0.60), TH),
+                    Image.LANCZOS,
+                    centering=(0.5, 0.3)
+                )
+                img = Image.new("RGB", (TW, TH), (5, 5, 15))
+                img.paste(img_rostro, (0, 0))
+            else:
+                img = ImageOps.fit(img, (TW, TH), Image.LANCZOS)
+        else:
+            img = Image.new("RGB", (TW, TH), (8, 10, 20))
+            for y in range(TH):
+                c = (int(5 + 20 * y / TH), int(10 + 25 * y / TH), int(20 + 35 * y / TH))
+                ImageDraw.Draw(img).line([(0, y), (TW, y)], fill=c)
+
+        img = ImageEnhance.Contrast(img).enhance(1.5)
+        img = ImageEnhance.Color(img).enhance(1.3)
+        img = ImageEnhance.Sharpness(img).enhance(2.2)
         img = ImageEnhance.Brightness(img).enhance(0.95)
 
         grad = Image.new("L", (TW, TH), 0)
         gd = ImageDraw.Draw(grad)
         for x in range(TW):
-            gd.line([(x, 0), (x, TH)], fill=int(240 * max(0, 1 - x / (TW * 0.65)) ** 1.6))
+            alpha = int(255 * max(0, min(1, (x / TW - 0.35) / 0.40)))
+            gd.line([(x, 0), (x, TH)], fill=alpha)
         img = Image.composite(Image.new("RGB", (TW, TH), (0, 0, 0)), img, grad)
-        arr = np.asarray(img, dtype=np.float32) * vignette((TW, TH), 1.0, 0.40)
+
+        arr = np.asarray(img, dtype=np.float32) * vignette((TW, TH), 1.0, 0.50)
         img = Image.fromarray(arr.astype(np.uint8)).convert("RGBA")
 
-        lineas = dividir_lineas(texto.upper().split()[:4])
-        max_w, max_h = int(TW * 0.58), int(TH * 0.78)
+        texto_upper = texto.upper()
+        palabras = texto_upper.split()[:4]
+        lineas = dividir_lineas(palabras)
 
-        for size in range(150, 60, -6):
+        x_inicio = int(TW * 0.55)
+        max_w_texto = TW - x_inicio - 40
+        max_h_texto = int(TH * 0.75)
+
+        size_final = 60
+        for size in range(140, 55, -6):
             font = obtener_fuente(size)
             cajas = [font.getbbox(l) for l in lineas]
-            alto = sum(b[3] - b[1] for b in cajas) + 18 * (len(lineas) - 1)
-            if max(b[2] - b[0] for b in cajas) <= max_w and alto <= max_h:
+            ancho_max = max(b[2] - b[0] for b in cajas)
+            alto_total = sum(b[3] - b[1] for b in cajas) + 18 * (len(lineas) - 1)
+            if ancho_max <= max_w_texto and alto_total <= max_h_texto:
+                size_final = size
                 break
 
-        acento = random.choice([(255, 220, 0), (255, 50, 50), (255, 140, 0), (255, 255, 255)])
-        y = (TH - alto) // 2 + 10
-        pos = []
+        font = obtener_fuente(size_final)
+        cajas = [font.getbbox(l) for l in lineas]
+        alto_total = sum(b[3] - b[1] for b in cajas) + 18 * (len(lineas) - 1)
+
+        y = (TH - alto_total) // 2
+        pos_lineas = []
         for l, b in zip(lineas, cajas):
-            pos.append((l, 60, y - b[1]))
+            ancho_l = b[2] - b[0]
+            x = x_inicio + (max_w_texto - ancho_l) // 2
+            pos_lineas.append((l, x, y - b[1]))
             y += (b[3] - b[1]) + 18
 
         glow = Image.new("RGBA", (TW, TH), (0, 0, 0, 0))
         gdraw = ImageDraw.Draw(glow)
-        for l, x, yy in pos:
-            gdraw.text((x, yy), l, font=font, fill=acento + (255,),
-                       stroke_width=10, stroke_fill=acento + (255,))
-        img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(24)))
+        for l, x, yy in pos_lineas:
+            gdraw.text((x, yy), l, font=font,
+                       fill=estilo["color_acento"] + (255,),
+                       stroke_width=14,
+                       stroke_fill=estilo["color_acento"] + (255,))
+        img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(22)))
 
         draw = ImageDraw.Draw(img)
-        borde = max(7, size // 20)
-        for i, (l, x, yy) in enumerate(pos):
-            color = acento if (i == len(pos) - 1) else (255, 255, 255)
-            draw.text((x, yy), l, font=font, fill=color + (255,),
-                      stroke_width=borde, stroke_fill=(0, 0, 0, 255))
+        borde = max(8, size_final // 14)
+        for i, (l, x, yy) in enumerate(pos_lineas):
+            color = estilo["color_acento"] if (i == len(pos_lineas) - 1) else estilo["color_texto"]
+            draw.text(
+                (x, yy), l, font=font,
+                fill=color + (255,),
+                stroke_width=borde,
+                stroke_fill=estilo["stroke"] + (255,)
+            )
+
+        elem = estilo.get("elemento", "ninguno")
+        if elem == "flecha_roja":
+            ax, ay = int(TW * 0.52), int(TH * 0.85)
+            draw.polygon([
+                (ax, ay),
+                (ax + 80, ay - 40),
+                (ax + 80, ay - 20),
+                (ax + 140, ay - 20),
+                (ax + 140, ay + 20),
+                (ax + 80, ay + 20),
+                (ax + 80, ay + 40),
+            ], fill=(255, 30, 30, 255))
+        elif elem == "circulo":
+            cx, cy = int(TW * 0.28), int(TH * 0.45)
+            r = 140
+            draw.ellipse(
+                [(cx - r, cy - r), (cx + r, cy + r)],
+                outline=(255, 30, 30, 255),
+                width=12
+            )
+        elif elem == "exclamacion":
+            font_exc = obtener_fuente(int(size_final * 1.5))
+            draw.text(
+                (int(TW * 0.50), int(TH * 0.08)),
+                "!!!",
+                font=font_exc,
+                fill=(255, 220, 0, 255),
+                stroke_width=10,
+                stroke_fill=(0, 0, 0, 255)
+            )
 
         rgb = img.convert("RGB")
         for q in (92, 87, 82, 76, 70):
             rgb.save(salida, "JPEG", quality=q, optimize=True)
             if os.path.getsize(salida) < 1_900_000:
                 break
-        print(f"✅ Miniatura: '{' / '.join(lineas)}' ({size}px)")
+
+        print(f"✅ Miniatura v3.4 [{estilo['nombre']}]: '{' / '.join(lineas)}' ({size_final}px)")
         return True
+
     except Exception as e:
-        print(f"❌ Error miniatura: {e}")
-        return False
+        print(f"❌ Error miniatura v3.4: {e}")
+        traceback.print_exc()
+        try:
+            img = Image.new("RGB", (TW, TH), (10, 15, 25))
+            draw = ImageDraw.Draw(img)
+            font = obtener_fuente(120)
+            draw.text((60, TH // 2 - 60), texto.upper()[:20], font=font,
+                     fill=(255, 255, 0), stroke_width=10, stroke_fill=(0, 0, 0))
+            img.save(salida, "JPEG", quality=88)
+            return True
+        except Exception:
+            return False
 
 # =================================================================
-# SEO ELITE (CURIOSITY GAP v3.2)
+# SEO ELITE (5 BLOQUES DE TAGS)
 # =================================================================
 def _ascii_tag_yt(t):
     nfd = unicodedata.normalize('NFD', str(t))
@@ -1540,16 +1783,8 @@ VIDEO LARGO:
 
 Responde SOLO JSON:
 {{
- "short1": {{
-   "titulo": "...",
-   "guion": "...",
-   "hashtags": "#tag1 #tag2 #tag3 #tag4"
- }},
- "short2": {{
-   "titulo": "...",
-   "guion": "...",
-   "hashtags": "#tag1 #tag2 #tag3 #tag4"
- }}
+ "short1": {{"titulo": "...", "guion": "...", "hashtags": "#tag1 #tag2 #tag3 #tag4"}},
+ "short2": {{"titulo": "...", "guion": "...", "hashtags": "#tag1 #tag2 #tag3 #tag4"}}
 }}"""
     try:
         txt = llm(prompt, temperature=0.95, max_tokens=1500, json_mode=True)
@@ -1738,11 +1973,10 @@ def main():
         sys.exit(0)
 
     print("=" * 70)
-    print("🧠 CÓDIGO MENTAL - BOT v3.3 (SEG_ESCENA=18s)")
+    print("🧠 CÓDIGO MENTAL - BOT v3.4 SAYAYIN")
     print(f"📅 {datetime.now(TZ):%Y-%m-%d %H:%M} | 🎤 {VOZ_CANAL['voz']}")
-    print(f"📤 1 Video Largo (8-12 min) + 2 Shorts | 🎨 Flux SEG_ESCENA={SEG_ESCENA}s")
-    print(f"🛡️  Blindaje: Casos de Estudio + Overlays + Curiosity Gap SEO")
-    print(f"📂 Categoría YouTube: Educación (27)")
+    print(f"📤 1 Video Largo + 2 Shorts | 🎨 Flux SEG_ESCENA={SEG_ESCENA}s")
+    print(f"🎯 v3.4: MINIATURAS ÉLITE con rostro + texto + composición")
     print("=" * 70)
 
     actualizar_rendimiento(youtube, estado)
@@ -1879,16 +2113,45 @@ def main():
     print(f"📝 Descripción (primeras 2 líneas):")
     print("   " + "\n   ".join(descripcion.split("\n")[:2]))
 
+    # ═══════════════════════════════════════════════════════════════
+    # MINIATURA v3.4: rostro emocional + texto + composición
+    # ═══════════════════════════════════════════════════════════════
+    print("🖼️  Buscando rostro emocional para miniatura...")
     portada = elegir_texto_portada(plan.get("palabras_portada"), titulo)
-    escena_mini = str(plan.get("miniatura_escena", "professional psychology cinematic dark"))
-    base_mini = generar_imagen_cloudflare(escena_mini + " for thumbnail", "thumb")
-    if not base_mini:
-        base_mini = reutilizar_imagen_flux("thumb_mini")
-    if not base_mini:
-        base_mini = imagen_fallback_pexels(escena_mini, "thumb_mini")
-    if not base_mini:
-        base_mini = imagen_fallback("thumb_mini")
-    miniatura = "miniatura.jpg" if crear_miniatura(base_mini, portada, "miniatura.jpg") else None
+    print(f"   📝 Texto de portada elegido: '{portada}'")
+
+    img_miniatura = None
+    miniatura_ok = False
+
+    # Nivel 1: Rostro emocional
+    img_miniatura = buscar_rostro_emocional_pexels(tema["tema"] + " person face")
+    if img_miniatura:
+        miniatura_ok = crear_miniatura_v34(img_miniatura, portada, "miniatura.jpg")
+        if miniatura_ok:
+            print("   ✅ Miniatura con ROSTRO emocional generada")
+
+    # Nivel 2: Cuerpo/manos
+    if not miniatura_ok:
+        print("   🔄 Sin rostro. Buscando cuerpo/manos emocionales...")
+        img_miniatura = buscar_cuerpo_emocional_pexels(tema["tema"])
+        if img_miniatura:
+            miniatura_ok = crear_miniatura_v34(img_miniatura, portada, "miniatura.jpg")
+            if miniatura_ok:
+                print("   ✅ Miniatura con CUERPO emocional generada")
+
+    # Nivel 3: Flux
+    if not miniatura_ok:
+        print("   🔄 Pexels sin resultados. Usando Flux abstracto...")
+        escena_mini = str(plan.get("miniatura_escena", "professional psychology cinematic dark"))
+        base_mini = generar_imagen_cloudflare(escena_mini + " for thumbnail", "thumb")
+        if not base_mini:
+            base_mini = reutilizar_imagen_flux("thumb_mini")
+        if not base_mini:
+            base_mini = imagen_fallback("thumb_mini")
+        miniatura_ok = crear_miniatura_v34(base_mini, portada, "miniatura.jpg")
+
+    miniatura = "miniatura.jpg" if miniatura_ok else None
+    # ═══════════════════════════════════════════════════════════════
 
     palabras_overlay_largo = ["DATO CLAVE", "ESTUDIO CIENTÍFICO", "ERROR MENTAL", "EVIDENCIA", "LA CIENCIA DICE"]
     escenas = construir_escenas(segs, palabras_overlay_largo)
@@ -1933,7 +2196,7 @@ def main():
                     fondo, 1, "short_1.mp4"
                 )
                 if s1 is None:
-                    print("   ⏭️ Short 1 fue SKIPeado. No se sube.")
+                    print("   ⏭️ Short 1 fue SKIPeado.")
                 else:
                     print(f"   ✅ Short 1 renderizado: {os.path.getsize(s1) // 1024} KB")
                     t_short1 = short1_data["titulo"][:88] + " #Shorts"
@@ -1966,7 +2229,7 @@ def main():
                     fondo, 2, "short_2.mp4"
                 )
                 if s2 is None:
-                    print("   ⏭️ Short 2 fue SKIPeado. No se sube.")
+                    print("   ⏭️ Short 2 fue SKIPeado.")
                 else:
                     print(f"   ✅ Short 2 renderizado: {os.path.getsize(s2) // 1024} KB")
                     t_short2 = short2_data["titulo"][:88] + " #Shorts"
