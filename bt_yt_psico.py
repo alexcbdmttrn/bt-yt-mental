@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-CÓDIGO MENTAL - Bot v3.4 SAYAYIN
-v3.4 - MINIATURAS ÉLITE: Rostro humano con emoción + texto gigante + composición profesional
-  - Sistema de 5 estilos rotativos (Shock, Revelación, Miedo, Duda, Curiosidad)
-  - Rostro real de Pexels (60% izquierda) + texto (40% derecha)
-  - Paleta agresiva con stroke negro grueso + glow neón
-  - Elemento de urgencia (flecha roja, círculo, exclamación)
-  - Prioriza palabras de alto impacto: TRAMPA, TE MIENTEN, SESGO, MENTIRA
+CÓDIGO MENTAL - Bot v3.5 BOLA DE NIEVE
+v3.5 - ESTRATEGIA DE CANAL (integración motor Chispas v1.7):
+  - Detección de OUTLIERS (canal chico + video viral = demanda real)
+  - Cruce de temas ganadores (pool + outlier real de YouTube)
+  - Lock de formato/narrador (bola de nieve, no saltar de personalidad)
+  - Avatar de audiencia + validación "¿lo vería la misma persona?"
+  - Detector de "uniforme del nicho" (para diferenciarse)
+  - Identidad visual fija (violeta psicológico)
+  - FIX bug YouTube API (id=", ".join → id=",".join)
+  - FIX limpiar_titulo protege siglas (ADN, NASA, PIB, etc.)
+v3.4 - MINIATURAS ÉLITE + overlay texto + shorts robustos
 v3.3 - SEG_ESCENA=18s (ahorro Cloudflare)
 v3.2 - SEO élite 4 capas + 5 bloques tags + Curiosity Gap
 v3.1 - Blindaje Anti-Demonetización
@@ -96,6 +100,29 @@ HORA_SHORT_2            = int(os.getenv("HORA_SHORT_2", "15"))
 VARIACION_MINUTOS_SHORT_2 = int(os.getenv("VARIACION_MINUTOS_SHORT_2", "60"))
 INTERVALO_MIN_HORAS     = float(os.getenv("INTERVALO_MIN_HORAS", "20"))
 ACTIVAR_DISCLOSURE_IA   = True
+
+# ═══════════════════════════ v3.5 BOLA DE NIEVE ═══════════════════════════
+OUTLIERS_FILE  = "outliers_cache_mental.json"
+UNIFORME_FILE  = "uniforme_cache_mental.json"
+PERFIL_LOCK_MIN_VISTAS = int(os.getenv("PERFIL_LOCK_MIN_VISTAS", "800"))
+PERFIL_LOCK_VIDEOS     = int(os.getenv("PERFIL_LOCK_VIDEOS", "5"))
+OUTLIER_MAX_SUBS       = int(os.getenv("OUTLIER_MAX_SUBS", "50000"))
+OUTLIER_MIN_RATIO      = float(os.getenv("OUTLIER_MIN_RATIO", "5.0"))
+OUTLIER_CACHE_HORAS    = int(os.getenv("OUTLIER_CACHE_HORAS", "24"))
+
+IDENTIDAD_VISUAL = {
+    "color_acento": (170, 100, 255),
+    "tipografia":   "Anton-Regular.ttf",
+    "estilo_thumb": "psicologia_violeta",
+    "watermark":    "CÓDIGO MENTAL",
+}
+
+ESTILOS_IDENTIDAD = [
+    {"nombre": "psicologia_violeta", "color_texto": (220, 180, 255),
+     "color_acento": (170, 100, 255), "stroke": (0, 0, 0),
+     "elemento": "circulo"},
+]
+# ═══════════════════════════════════════════════════════════════════════════
 
 DISCLOSURE_TEXT = (
     "\n\n⚠️ Este contenido es un documental educativo elaborado con asistencia de "
@@ -266,6 +293,10 @@ PERFILES_NARRADOR = [
 # =================================================================
 # UTILIDADES
 # =================================================================
+def _chunks(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
 def cargar_json(ruta, default):
     try:
         with open(ruta, "r", encoding="utf-8") as f:
@@ -416,7 +447,7 @@ def puntuar_demanda(youtube, consulta):
         ids = [i["id"]["videoId"] for i in r.get("items", [])]
         if not ids:
             return 0
-        s = youtube.videos().list(part="statistics", id=", ".join(ids)).execute()
+        s = youtube.videos().list(part="statistics", id=",".join(ids)).execute()  # ═══ v3.5 FIX ═══
         vistas = [int(i["statistics"].get("viewCount", 0)) for i in s.get("items", [])]
         return sum(vistas) / len(vistas) if vistas else 0
     except Exception:
@@ -427,7 +458,7 @@ def actualizar_rendimiento(youtube, estado):
     if not ids or youtube is None:
         return
     try:
-        r = youtube.videos().list(part="statistics", id=", ".join(ids)).execute()
+        r = youtube.videos().list(part="statistics", id=",".join(ids)).execute()  # ═══ v3.5 FIX ═══
         vistas = {i["id"]: int(i["statistics"].get("viewCount", 0)) for i in r.get("items", [])}
         for v in estado["videos"]:
             if v.get("id") in vistas:
@@ -435,31 +466,267 @@ def actualizar_rendimiento(youtube, estado):
     except Exception:
         pass
 
+# ═══════════════════════════ v3.5 BOLA DE NIEVE ═══════════════════════════
+def detectar_outliers(youtube, keyword, max_subs=OUTLIER_MAX_SUBS,
+                      min_ratio=OUTLIER_MIN_RATIO, days=180,
+                      cache_h=OUTLIER_CACHE_HORAS):
+    """
+    Outlier = canal chico con video muy visto.
+    ratio = views / subscriberCount. Si subs < 50k y ratio > 5,
+    YouTube empujó ese video a gente que NO era suscriptor.
+    """
+    if youtube is None:
+        return []
+    cache = cargar_json(OUTLIERS_FILE, {})
+    key = f"{keyword}|{max_subs}|{min_ratio}"
+    if key in cache and (time.time() - cache[key].get("ts", 0)) < cache_h * 3600:
+        return cache[key]["items"]
+    try:
+        desde = (datetime.now(timezone.utc) - timedelta(days=days)
+                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        s = youtube.search().list(
+            part="id,snippet", q=keyword, type="video", order="viewCount",
+            publishedAfter=desde, relevanceLanguage="es",
+            regionCode="MX", maxResults=25
+        ).execute()
+        vids = [i["id"]["videoId"] for i in s.get("items", [])]
+        if not vids:
+            cache[key] = {"ts": time.time(), "items": []}
+            guardar_json(OUTLIERS_FILE, cache)
+            return []
+        v_resp = youtube.videos().list(part="statistics,snippet",
+                                        id=",".join(vids)).execute()
+        ch_ids, rows = set(), []
+        for v in v_resp.get("items", []):
+            ch = v["snippet"]["channelId"]
+            ch_ids.add(ch)
+            rows.append({
+                "video_id": v["id"], "title": v["snippet"]["title"],
+                "channel_id": ch, "channel_title": v["snippet"]["channelTitle"],
+                "published_at": v["snippet"]["publishedAt"],
+                "views": int(v["statistics"].get("viewCount", 0)),
+            })
+        subs_map = {}
+        for chunk in _chunks(list(ch_ids), 50):
+            c = youtube.channels().list(part="statistics",
+                                         id=",".join(chunk)).execute()
+            for item in c.get("items", []):
+                subs_map[item["id"]] = int(
+                    item["statistics"].get("subscriberCount", 0))
+        out = []
+        for r in rows:
+            subs = subs_map.get(r["channel_id"], 0)
+            if subs == 0 or subs > max_subs:
+                continue
+            ratio = r["views"] / max(subs, 1)
+            if ratio >= min_ratio:
+                out.append({**r, "subs": subs, "ratio": round(ratio, 1)})
+        out.sort(key=lambda x: x["ratio"], reverse=True)
+        out = out[:8]
+        cache[key] = {"ts": time.time(), "items": out}
+        guardar_json(OUTLIERS_FILE, cache)
+        if out:
+            print(f"   🎯 Outliers '{keyword}': {len(out)}")
+            for o in out[:3]:
+                print(f"      • {o['channel_title']} ({o['subs']} subs) "
+                      f"→ {o['views']} v (x{o['ratio']}): {o['title'][:60]}")
+        return out
+    except Exception as e:
+        print(f"⚠️ detectar_outliers: {e}")
+        return []
+
+def cruzar_temas(tema_original, outlier):
+    """Cruza el tema del pool con un outlier real de YouTube."""
+    prompt = f"""Eres estratega de YouTube. Cruza estos dos temas para crear
+UN video nuevo que herede la demanda de ambos.
+
+TEMA DEL POOL: {tema_original['tema']}
+ÁNGULO: {tema_original['angulo']}
+KEYWORDS: {', '.join(tema_original['keywords'])}
+
+OUTLIER REAL (video que rompió en un canal chico):
+TÍTULO: {outlier['title']}
+CANAL: {outlier['channel_title']} ({outlier['subs']} subs, {outlier['views']} vistas)
+
+REGLAS:
+- UN SOLO video (no serie).
+- Debe ser buscable (la gente ya lo busca).
+- Conserva el nicho psicología/estoicismo/desarrollo del pool.
+- NO "X vs Y" genérico. Idea concreta.
+
+Responde SOLO JSON:
+{{"tema":"slug_sin_espacios","angulo":"...","keywords":["k1","k2","k3","k4","k5"],
+"dato_contraintuitivo_sugerido":"...","por_que_funciona":"1 frase"}}"""
+    try:
+        txt = llm(prompt, temperature=0.9, max_tokens=600, json_mode=True)
+        d = parsear_json(txt)
+        if d.get("tema") and d.get("angulo") and d.get("keywords"):
+            print(f"   🔀 Cruzado: {d['tema']} → {d.get('por_que_funciona', '')[:80]}")
+            return d
+    except Exception as e:
+        print(f"⚠️ cruzar_temas: {e}")
+    return None
+
+def elegir_formato_perfil(estado):
+    lock = estado.get("perfil_lock")
+    if lock:
+        ult = next((v for v in reversed(estado["videos"])
+                    if v.get("id") and "vistas" in v), None)
+        if ult and ult.get("vistas", 0) >= PERFIL_LOCK_MIN_VISTAS:
+            print(f"   🔒 Perfil bloqueado: {lock.get('formato_nombre')} + {lock.get('perfil')}")
+            f = next((x for x in FORMATOS_NARRACION
+                      if x["nombre"] == lock.get("formato_nombre")), None)
+            if f:
+                return f, lock["perfil"], True
+        else:
+            vistas_ult = ult.get("vistas", 0) if ult else 0
+            print(f"   🔓 Desbloqueando perfil (último: {vistas_ult} vistas)")
+            estado.pop("perfil_lock", None)
+            guardar_json(ESTADO_FILE, estado)
+    f = random.choice(FORMATOS_NARRACION)
+    p = random.choice(PERFILES_NARRADOR)
+    return f, p, False
+
+def bloquear_perfil(estado, formato, perfil, video_id):
+    estado["perfil_lock"] = {
+        "formato_nombre": formato["nombre"],
+        "perfil": perfil,
+        "video_id_ancla": video_id,
+        "desde": datetime.now(TZ).isoformat(),
+    }
+    guardar_json(ESTADO_FILE, estado)
+    print(f"   🔐 Perfil bloqueado a {formato['nombre']} + {perfil}")
+
+def generar_avatar_audiencia(plan, tema):
+    tits = plan.get("titulos") or [""]
+    titulo_ejemplo = tits[0] if tits else ""
+    prompt = f"""Extrae el AVATAR de audiencia de este video de psicología.
+TÍTULO: {titulo_ejemplo}
+DATO CONTRAINTUITIVO: {plan.get('dato_contraintuitivo', '')}
+TEMA: {tema['tema']} | ÁNGULO: {tema['angulo']}
+Responde SOLO JSON:
+{{"edad":"rango","genero":"M/F/ambos","intereses":["i1","i2","i3"],
+"dolor":"qué problema tiene","nivel":"educativo/técnico",
+"por_que_ve_esto":"1 frase"}}"""
+    try:
+        txt = llm(prompt, temperature=0.6, max_tokens=400, json_mode=True)
+        return parsear_json(txt)
+    except Exception as e:
+        print(f"⚠️ avatar: {e}")
+        return None
+
+def validar_misma_audiencia(avatar, plan_nuevo, tema_nuevo):
+    if not avatar:
+        return True, "sin avatar"
+    tits = plan_nuevo.get("titulos") or [""]
+    titulo_ejemplo = tits[0] if tits else ""
+    prompt = f"""AVATAR del canal:
+{json.dumps(avatar, ensure_ascii=False, indent=2)}
+
+NUEVO VIDEO:
+- TÍTULO: {titulo_ejemplo}
+- TEMA: {tema_nuevo['tema']}
+- ÁNGULO: {tema_nuevo['angulo']}
+- DATO CONTRAINTUITIVO: {plan_nuevo.get('dato_contraintuitivo', '')}
+
+¿La MISMA persona del avatar vería este video?
+Responde SOLO JSON:
+{{"misma_audiencia":true/false,"por_que":"1 frase","sugerencia":"si es false"}}"""
+    try:
+        txt = llm(prompt, temperature=0.3, max_tokens=250, json_mode=True)
+        d = parsear_json(txt)
+        ok = bool(d.get("misma_audiencia", True))
+        if not ok:
+            print(f"   ⚠️ Audiencia distinta: {d.get('por_que', '')}")
+        return ok, d.get("por_que", "")
+    except Exception:
+        return True, "error validando"
+
+def detectar_uniforme_nicho(youtube, keyword, top_n=12, cache_d=7):
+    cache = cargar_json(UNIFORME_FILE, {})
+    if keyword in cache and (time.time() - cache[keyword].get("ts", 0)) < cache_d * 86400:
+        return cache[keyword]["patron"]
+    if youtube is None:
+        return None
+    try:
+        desde = (datetime.now(timezone.utc) - timedelta(days=30)
+                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        s = youtube.search().list(part="snippet", q=keyword, type="video",
+                                   order="viewCount", publishedAfter=desde,
+                                   relevanceLanguage="es", regionCode="MX",
+                                   maxResults=top_n).execute()
+        titulos = [i["snippet"]["title"] for i in s.get("items", [])]
+        if len(titulos) < 5:
+            return None
+        prompt = f"""Analiza estos títulos de los videos MÁS VISTOS del nicho
+"{keyword}" (YouTube, últimos 30 días):
+{chr(10).join(f"- {t}" for t in titulos)}
+
+Identifica el "uniforme" del nicho (patrón dominante) y sugiere
+3 contra-patrones que se verían DISTINTOS.
+
+Responde SOLO JSON:
+{{"uniforme":{{"estructura":"...","palabras_repetidas":["..."],
+"tipo_gancho":"...","emocion":"..."}},
+"contra_patrones":[{{"idea":"...","ejemplo":"..."}}]}}"""
+        txt = llm(prompt, temperature=0.7, max_tokens=700, json_mode=True)
+        patron = parsear_json(txt)
+        cache[keyword] = {"ts": time.time(), "patron": patron}
+        guardar_json(UNIFORME_FILE, cache)
+        u = patron.get("uniforme", {})
+        print(f"   🎭 Uniforme '{keyword}': {u.get('estructura', 'N/A')[:70]}")
+        return patron
+    except Exception as e:
+        print(f"⚠️ uniforme: {e}")
+        return None
+
 def elegir_tema(estado, youtube):
+    """v3.5: tema por outliers reales + cruce con uno de ellos."""
     recientes = estado["temas_recientes"][-6:]
     pool = [t for t in TEMAS if t["tema"] not in recientes] or TEMAS[:]
     candidatos = random.sample(pool, min(5, len(pool)))
+
+    outliers_map = {}
+    scores = {}
+    for t in candidatos:
+        o = detectar_outliers(youtube, t["seed"])
+        outliers_map[t["tema"]] = o
+        scores[t["tema"]] = sum(x["ratio"] for x in o)
+
     acum = {}
     for v in estado["videos"]:
         if "vistas" in v:
             acum.setdefault(v["tema"], []).append(v["vistas"])
     rend = {k: sum(x) / len(x) for k, x in acum.items()}
     max_r = max(rend.values()) if rend else 1
-    demandas = {t["tema"]: puntuar_demanda(youtube, t["seed"]) for t in candidatos}
-    max_d = max([d for d in demandas.values() if d] or [1])
+    max_o = max(scores.values()) if any(scores.values()) else 1
 
-    def score(t):
-        d = demandas[t["tema"]]
-        sd = d / max_d if d else 0.4
-        sr = rend[t["tema"]] / max_r if t["tema"] in rend and max_r else 0.6
-        return 0.5 * sd + 0.5 * sr + random.uniform(0, 0.2)
+    def final_score(t):
+        o = scores[t["tema"]] / max_o if max_o else 0
+        r = rend.get(t["tema"], 0) / max_r if max_r else 0
+        return 0.6 * o + 0.3 * r + random.uniform(0, 0.15)
 
-    elegido = max(candidatos, key=score)
-    print(f"🎯 Tema elegido: {elegido['tema']}")
+    elegido = max(candidatos, key=final_score)
+    print(f"🎯 Tema: {elegido['tema']} | outliers={len(outliers_map.get(elegido['tema'], []))}")
+
+    outs = outliers_map.get(elegido["tema"], [])
+    if outs:
+        refinado = cruzar_temas(elegido, outs[0])
+        if refinado:
+            return {
+                "tema": refinado["tema"],
+                "seed": refinado["tema"].replace("_", " "),
+                "angulo": refinado["angulo"],
+                "keywords": refinado["keywords"][:5],
+                "contextos": elegido["contextos"],
+                "hashtags": elegido["hashtags"],
+                "dato_contraintuitivo_hint": refinado.get("dato_contraintuitivo_sugerido", ""),
+            }
     return elegido
+# ═══════════════════════════════════════════════════════════════════════════
 
 # =================================================================
-# TÍTULOS Y MINIATURAS (SEO ÉLITE v3.4)
+# TÍTULOS Y MINIATURAS (SEO ÉLITE v3.5)
 # =================================================================
 GANCHOS = [
     "nunca", "nadie", "jamás", "nadie te", "prohibido", "secreto",
@@ -475,15 +742,21 @@ PROHIBIDAS = ["testimonio real", "caso real", "100% real", "verídico", "comprob
               "garantizado", "secreto revelado", "hack", "truco", "trucos"]
 GENERICAS = ["psicologia", "filosofia", "relato", "historia de"]
 
+# ═══ v3.5: siglas protegidas ═══
+SIGLAS_INTOCABLES = {"ADN", "ARN", "NASA", "ONU", "IA", "EEUU", "COVID",
+                     "VIH", "SIDA", "OVNI", "PIB", "UE", "OMS", "POV",
+                     "TDAH", "OCD", "IQ", "CI", "EMDR", "TCC"}
+
 def limpiar_titulo(t):
     t = t.strip().strip('"').strip("'")
     t = re.sub(r"\s+", " ", t)
     t = re.sub(r"\s*[-|–]\s*psicología.*$", "", t, flags=re.I)
     t = t.rstrip(".")
     palabras = t.split()
-    caps = [w for w in palabras if len(re.sub(r"\W", " ", w)) >= 3 and w.isupper()]
+    caps = [w for w in palabras if len(re.sub(r"\W", " ", w)) >= 3 and w.isupper()
+            and w not in SIGLAS_INTOCABLES]  # ═══ v3.5 ═══
     if len(caps) > 3:
-        keep = set(caps[:2])
+        keep = set(caps[:2]) | SIGLAS_INTOCABLES
         palabras = [w if (not w.isupper() or w in keep or len(w) < 3) else w.capitalize()
                     for w in palabras]
     return " ".join(palabras)
@@ -564,15 +837,12 @@ def elegir_titulo(candidatos, dato_contraintuitivo=""):
     return puntuados[0][1][:100]
 
 def elegir_texto_portada(opciones, titulo):
-    """v3.4: Prioriza palabras de alto impacto psicológico."""
     pt = set(re.findall(r"\w+", titulo.lower()))
     mejor = None
-
     fallbacks_virales = [
         "TE MIENTEN", "TRAMPA", "EL SESGO", "OCULTAN", "EL ERROR",
         "TU CEREBRO", "NO LO HAGAS", "MANIPULAN", "MENTIRA", "TE SABOTEA"
     ]
-
     for o in opciones or []:
         if not isinstance(o, str):
             continue
@@ -582,18 +852,14 @@ def elegir_texto_portada(opciones, titulo):
             continue
         solape = len({x.lower() for x in w} & pt) / len(w)
         sc = (3 if len(w) in (2, 3) else 1) - 2 * solape + (1 if "?" in o else 0)
-
         if any(x in o for x in ["MIENTEN", "PELIGRO", "OCULTAN", "TRAMPA",
                                  "CEREBRO", "MANIPULAN", "ERROR", "SESGO",
                                  "MENTIRA", "SABOTEA"]):
             sc += 5
-
         if mejor is None or sc > mejor[0]:
             mejor = (sc, o)
-
     if not mejor:
         return random.choice(fallbacks_virales)
-
     return mejor[1]
 
 # =================================================================
@@ -620,12 +886,14 @@ ESQUEMA_PLAN = """{
 def generar_plan(tema, contexto, sugerencias, titulos_previos, formato, perfil):
     prev = "\n".join(f"- {t}" for t in titulos_previos) or "Ninguno"
     sug  = "\n".join(f"- {s}" for s in sugerencias) or "Ninguna"
+    hint = tema.get("dato_contraintuitivo_hint", "")
 
     prompt = f"""Eres el director de un canal de DOCUMENTALES EDUCATIVOS sobre psicología aplicada.
 Diseña el PLAN de un video educativo de ~9-11 minutos, con {NUM_PUNTOS} puntos principales.
 
 TEMA: {tema['tema']} | ÁNGULO: {tema['angulo']}
 CONTEXTO: {contexto}
+{('DATO CONTRAINTUITIVO SUGERIDO (por cruce de outliers): ' + hint) if hint else ''}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FORMATO OBLIGATORIO: {formato['nombre'].upper()}
@@ -638,7 +906,6 @@ BÚSQUEDAS REALES YOUTUBE: {sug}
 TÍTULOS YA PUBLICADOS (no repetir): {prev}
 
 ━━━ REGLA CRÍTICA: TÍTULO CURIOSITY GAP (CLICKBAIT ÉTICO) ━━━
-El CTR es el rey. El canal usa títulos que crean una "brecha de curiosidad".
 Usa fórmulas como:
   • "La trampa psicológica que usan los..."
   • "Por qué tu cerebro te sabotea con..."
@@ -648,8 +915,8 @@ Usa fórmulas como:
 El campo 'titulos' debe contener 6 opciones. AL MENOS 3 deben usar esta estructura.
 
 REGLAS DE CONTENIDO (ANTI-DEMONETIZACIÓN YMYL):
-1. Tono de DOCUMENTAL CIENTÍFICO. No des consejos médicos directos ("debes hacer X"). Usa "La ciencia dice...", "Los estudios demuestran...".
-2. Cada punto debe aportar VALOR concreto (no relleno).
+1. Tono de DOCUMENTAL CIENTÍFICO. No des consejos médicos directos.
+2. Cada punto debe aportar VALOR concreto.
 3. Incluye al menos 1 estudio o autor por video.
 4. El gancho debe INCLUIR el dato_contraintuitivo.
 
@@ -711,11 +978,13 @@ ESTE PUNTO: {punto.get('titulo', '')} → {punto.get('resumen', '')}
 REGLAS DE ORO (VALOR HUMANO Y ANTI-DEMONETIZACIÓN):
 1. 320-400 palabras exactas.
 2. Español neutro-mexicano, tono de autoridad pero accesible.
-3. ⚠️ INCLUYE UN MINI CASO DE ESTUDIO O ANÉCDOTA COTIDIANA: Para ilustrar el concepto, inventa una breve historia de alguien (ej. "Conocí a un paciente llamado Carlos que...").
-4. ⚠️ CIERRA CON UNA PREGUNTA RETÓRICA: Haz que el espectador reflexione (ej. "¿Te has dado cuenta de que tú también haces esto?").
+3. ⚠️ INCLUYE UN MINI CASO DE ESTUDIO O ANÉCDOTA COTIDIANA: inventa una breve historia
+   de alguien (ej. "Conocí a un paciente llamado Carlos que...").
+4. ⚠️ CIERRA CON UNA PREGUNTA RETÓRICA: haz que el espectador reflexione.
 5. Incluye 1 estudio, autor o dato científico (real o plausible).
 6. El dato contraintuitivo debe sonar natural, no forzado.
 7. NO des consejos médicos directos. Usa "La evidencia sugiere...".
+8. Incluye UNA METÁFORA COTIDIANA (colegio, cocina, coche, fútbol) que explique el mecanismo.
 Devuelve SOLO el texto del punto."""
         texto = None
         for intento in range(3):
@@ -855,6 +1124,8 @@ def reutilizar_imagen_flux(idx):
         return None
     original = POOL_FLUX[POOL_FLUX_INDEX % len(POOL_FLUX)]
     POOL_FLUX_INDEX += 1
+    if not os.path.exists(original):
+        return None
     try:
         ruta = f"temp_img_{idx}_reused.jpg"
         with open(original, "rb") as src, open(ruta, "wb") as dst:
@@ -989,8 +1260,9 @@ para generar una imagen con Flux que ilustre visualmente ese fragmento.
 REGLAS:
 - Estilo: cinematográfico, profesional, oscuro-elegante, editorial
 - Prefiere: siluetas, manos, entornos, objetos simbólicos, escenarios
-- EVITA primeros planos de rostros (Flux los hace pero mejor evitarlos)
-- Ejemplos: "cinematic brain scan blue light", "person walking alone silhouette", "hands writing journal dark", "two people arguing office"
+- EVITA primeros planos de rostros
+- Ejemplos: "cinematic brain scan blue light", "person walking alone silhouette",
+  "hands writing journal dark", "two people arguing office"
 - NUNCA incluyas: "text", "words", "letters", "caption"
 
 Tema: {tema['tema']}
@@ -1188,7 +1460,7 @@ def renderizar(escenas, total, audio, size, salida, sufijo=""):
     return salida
 
 # =================================================================
-# MINIATURAS ÉLITE v3.4 (ROSTRO + TEXTO + COMPOSICIÓN)
+# MINIATURAS ÉLITE v3.5 (rostro + texto + composición + identidad)
 # =================================================================
 def obtener_fuente(size):
     os.makedirs("fonts", exist_ok=True)
@@ -1210,23 +1482,16 @@ def obtener_fuente(size):
     return ImageFont.load_default()
 
 def buscar_rostro_emocional_pexels(query_base=""):
-    """v3.4: Busca rostro con expresión psicológica fuerte."""
     if not PEXELS_API_KEY:
         return None
-
     queries = [
-        "shocked man face dark",
-        "surprised woman portrait dark",
-        "confused person face dark",
-        "worried man portrait dark",
-        "thinking woman face dark",
-        "amazed man face closeup",
-        "concerned person face dark",
-        "thoughtful man portrait",
+        "shocked man face dark", "surprised woman portrait dark",
+        "confused person face dark", "worried man portrait dark",
+        "thinking woman face dark", "amazed man face closeup",
+        "concerned person face dark", "thoughtful man portrait",
     ]
     if query_base:
         queries = [query_base + " face portrait dark"] + queries
-
     random.shuffle(queries)
     for q in queries[:6]:
         try:
@@ -1238,11 +1503,9 @@ def buscar_rostro_emocional_pexels(query_base=""):
             fotos = (data or {}).get("photos", [])
             if not fotos:
                 continue
-            candidatas = [
-                f for f in fotos
-                if f["src"]["large2x"] not in USADOS_PEXELS
-                and f.get("width", 0) > 1000
-            ]
+            candidatas = [f for f in fotos
+                          if f["src"]["large2x"] not in USADOS_PEXELS
+                          and f.get("width", 0) > 1000]
             if not candidatas:
                 continue
             foto = random.choice(candidatas[:4])
@@ -1258,27 +1521,21 @@ def buscar_rostro_emocional_pexels(query_base=""):
     return None
 
 def buscar_cuerpo_emocional_pexels(query_base=""):
-    """v3.4: Fallback si no hay rostros."""
     if not PEXELS_API_KEY:
         return None
-
     queries = [
-        "person touching head stressed dark",
-        "hands holding phone dark",
-        "silhouette person thinking dark",
-        "person writing journal dark",
-        "hands on face stress",
-        "person alone window night",
+        "person touching head stressed dark", "hands holding phone dark",
+        "silhouette person thinking dark", "person writing journal dark",
+        "hands on face stress", "person alone window night",
     ]
     if query_base:
         queries = [query_base + " person dark"] + queries
-
     random.shuffle(queries)
     for q in queries[:5]:
         try:
             data = pexels_get(
                 "https://api.pexels.com/v1/search",
-                {"query": q, "orientation": "landscape", "size": "large",
+                {"query": q, "orientation": "portrait", "size": "large",
                  "per_page": 8, "page": 1}
             )
             fotos = (data or {}).get("photos", [])
@@ -1300,43 +1557,22 @@ def buscar_cuerpo_emocional_pexels(query_base=""):
     return None
 
 def elegir_estilo_miniatura():
-    """v3.4: 5 estilos rotativos psicológicos."""
     estilos = [
-        {
-            "nombre": "shock_rojo",
-            "color_texto": (255, 255, 255),
-            "color_acento": (255, 30, 30),
-            "stroke": (0, 0, 0),
-            "elemento": "flecha_roja",
-        },
-        {
-            "nombre": "revelacion_amarillo",
-            "color_texto": (255, 220, 0),
-            "color_acento": (255, 255, 255),
-            "stroke": (0, 0, 0),
-            "elemento": "circulo",
-        },
-        {
-            "nombre": "miedo_cyan",
-            "color_texto": (0, 255, 255),
-            "color_acento": (255, 255, 255),
-            "stroke": (0, 0, 0),
-            "elemento": "ninguno",
-        },
-        {
-            "nombre": "duda_blanco",
-            "color_texto": (255, 255, 255),
-            "color_acento": (255, 140, 0),
-            "stroke": (0, 0, 0),
-            "elemento": "exclamacion",
-        },
-        {
-            "nombre": "curiosidad_naranja",
-            "color_texto": (255, 140, 0),
-            "color_acento": (255, 255, 0),
-            "stroke": (0, 0, 0),
-            "elemento": "flecha_roja",
-        },
+        {"nombre": "shock_rojo", "color_texto": (255, 255, 255),
+         "color_acento": (255, 30, 30), "stroke": (0, 0, 0),
+         "elemento": "flecha_roja"},
+        {"nombre": "revelacion_amarillo", "color_texto": (255, 220, 0),
+         "color_acento": (255, 255, 255), "stroke": (0, 0, 0),
+         "elemento": "circulo"},
+        {"nombre": "miedo_cyan", "color_texto": (0, 255, 255),
+         "color_acento": (255, 255, 255), "stroke": (0, 0, 0),
+         "elemento": "ninguno"},
+        {"nombre": "duda_blanco", "color_texto": (255, 255, 255),
+         "color_acento": (255, 140, 0), "stroke": (0, 0, 0),
+         "elemento": "exclamacion"},
+        {"nombre": "curiosidad_naranja", "color_texto": (255, 140, 0),
+         "color_acento": (255, 255, 0), "stroke": (0, 0, 0),
+         "elemento": "flecha_roja"},
     ]
     return random.choice(estilos)
 
@@ -1351,9 +1587,14 @@ def dividir_lineas(palabras):
             mejor = (m, [a, b])
     return mejor[1]
 
-def crear_miniatura_v34(img_rostro_path, texto, salida, estilo=None):
-    """v3.4: Composición rostro izquierda + texto derecha + elementos urgencia."""
+def crear_miniatura_v34(img_rostro_path, texto, salida, estilo=None, forzar_estilo=None):
+    """v3.5: acepta forzar_estilo para identidad fija del canal."""
     TW, TH = 1280, 720
+    if forzar_estilo:
+        match = next((s for s in ESTILOS_IDENTIDAD if s["nombre"] == forzar_estilo), None)
+        if match:
+            estilo = match
+            print(f"   🎨 Estilo identidad forzado: {estilo['nombre']}")
     estilo = estilo or elegir_estilo_miniatura()
 
     try:
@@ -1478,11 +1719,11 @@ def crear_miniatura_v34(img_rostro_path, texto, salida, estilo=None):
             if os.path.getsize(salida) < 1_900_000:
                 break
 
-        print(f"✅ Miniatura v3.4 [{estilo['nombre']}]: '{' / '.join(lineas)}' ({size_final}px)")
+        print(f"✅ Miniatura v3.5 [{estilo['nombre']}]: '{' / '.join(lineas)}' ({size_final}px)")
         return True
 
     except Exception as e:
-        print(f"❌ Error miniatura v3.4: {e}")
+        print(f"❌ Error miniatura v3.5: {e}")
         traceback.print_exc()
         try:
             img = Image.new("RGB", (TW, TH), (10, 15, 25))
@@ -1506,16 +1747,12 @@ def _ascii_tag_yt(t):
 
 def construir_tags(plan, tema, sugerencias):
     nombre_tema = _ascii_tag_yt(tema["tema"].replace("_", " "))
-
     tags_ia = plan.get("tags", [])
     if isinstance(tags_ia, str):
         tags_ia = [x.strip() for x in tags_ia.split(",")]
-
     exactos = list(tags_ia)[:5]
-
     broad = ["psicologia", "estoicismo", "desarrollo personal",
              "inteligencia emocional", "mentalidad", "neurociencia"]
-
     curiosity_gap = [
         f"la trampa de {nombre_tema}",
         f"el error de {nombre_tema}",
@@ -1523,14 +1760,12 @@ def construir_tags(plan, tema, sugerencias):
         f"lo que ocultan sobre {nombre_tema}",
         f"la psicologia de {nombre_tema}",
     ]
-
     long_tail = [
         f"psicologia {nombre_tema}",
         f"estoicismo {nombre_tema}",
         f"como {nombre_tema}",
         f"que es {nombre_tema}",
     ]
-
     preguntas = list(sugerencias)[:3]
     especificos_tema = list(tema["keywords"])[:3]
 
@@ -1547,7 +1782,7 @@ def construir_tags(plan, tema, sugerencias):
     resultado, total_chars = [], 0
     for tag in todos:
         costo = len(tag) + 1
-        if total_chars + costo > 460 or len(resultado) >= 20:
+        if total_chars + costo > 490 or len(resultado) >= 20:
             break
         resultado.append(tag)
         total_chars += costo
@@ -1572,38 +1807,25 @@ def construir_descripcion(plan, tema, caps_ts, sugerencias, hashtags):
     keyword_principal = kws[0] if kws else tema["tema"].replace("_", " ")
     dato_c = plan.get("dato_contraintuitivo", "")
     resumen = plan.get("resumen", "")
-
     linea1 = f"{keyword_principal.title()}: {dato_c}." if dato_c else f"{keyword_principal.title()}: {resumen[:120]}"
     linea2 = f"En este video te explico {plan.get('gancho', '')[:180]}"
-
     capitulos = "\n".join(f"{ts} {t}" for ts, t in caps_ts)
     rel = ", ".join(sugerencias[:5])
-
     partes = [
-        f"🎯 {linea1}",
-        linea2,
-        f"",
+        f"🎯 {linea1}", linea2, "",
         f"🔔 SUSCRÍBETE para un video nuevo cada día: {CANAL_LINK}?sub_confirmation=1",
-        f"",
-        f"⏰ CAPÍTULOS\n{capitulos}",
-        f"",
-        f"📖 SOBRE ESTE VIDEO\n{resumen}",
-        f"",
-        (f"🔎 BÚSQUEDAS RELACIONADAS: {rel}" if rel else ""),
-        f"",
+        "", f"⏰ CAPÍTULOS\n{capitulos}", "",
+        f"📖 SOBRE ESTE VIDEO\n{resumen}", "",
+        (f"🔎 BÚSQUEDAS RELACIONADAS: {rel}" if rel else ""), "",
         f"📱 Sígueme en Facebook: https://www.facebook.com/profile.php?id=61593237382982",
-        f"",
-        f"📚 Otros videos que te pueden interesar:",
+        "", f"📚 Otros videos que te pueden interesar:",
         f"• Cómo recuperar tu dopamina → {CANAL_LINK}/videos",
         f"• Estoicismo aplicado → {CANAL_LINK}/videos",
     ]
-
     if ACTIVAR_DISCLOSURE_IA:
         partes.append(DISCLOSURE_TEXT.strip())
-
     partes.append("")
     partes.append(hashtags)
-
     desc = "\n".join(p for p in partes if p is not None)
     return desc[:4900]
 
@@ -1655,7 +1877,6 @@ def proximo_slot_batch():
         dia_base = (ahora + timedelta(days=1)).date()
     else:
         dia_base = ahora.date()
-
     dia_dt = datetime.combine(dia_base, datetime.min.time()).replace(tzinfo=TZ)
 
     def slot(hora, variacion, offset=0):
@@ -1666,6 +1887,14 @@ def proximo_slot_batch():
     slot_largo  = slot(HORA_LARGO, VARIACION_MINUTOS_LARGO)
     slot_short1 = slot(HORA_SHORT_1, VARIACION_MINUTOS_SHORT_1, offset=15)
     slot_short2 = slot(HORA_SHORT_2, VARIACION_MINUTOS_SHORT_2, offset=15)
+
+    ahora_min = ahora + timedelta(minutes=15)
+    if slot_largo < ahora_min:
+        slot_largo = ahora_min + timedelta(minutes=30)
+    if slot_short1 < ahora_min:
+        slot_short1 = ahora_min + timedelta(minutes=45)
+    if slot_short2 < ahora_min:
+        slot_short2 = ahora_min + timedelta(minutes=60)
     return slot_largo, slot_short1, slot_short2
 
 def utc_iso(dt):
@@ -1780,6 +2009,7 @@ VIDEO LARGO:
 2. Los 2 títulos deben ser claramente DIFERENTES en estructura y palabras.
 3. El guion NO debe incluir CTA de "suscríbete" — el bot lo agrega después.
 4. Los hashtags del short 1 y short 2 deben tener al menos 2 diferentes entre sí.
+5. NUNCA des diagnósticos ni consejos clínicos. Solo "la psicología dice que...".
 
 Responde SOLO JSON:
 {{
@@ -1810,7 +2040,6 @@ Responde SOLO JSON:
 
 def crear_short_con_guion(guion_texto, titulo_short, hashtags_short, fondo, indice, salida):
     print(f"   📱 Short {indice} guion: {len(guion_texto.split())} palabras")
-
     textos = dividir_en_segmentos(guion_texto)
     if not textos:
         return None, 0
@@ -1830,11 +2059,11 @@ def crear_short_con_guion(guion_texto, titulo_short, hashtags_short, fondo, indi
         medios = []
         for k in range(n_imgs):
             img_id = f"sh{indice}_{i}_{k}"
-            ruta = reutilizar_imagen_flux(img_id)
+            ruta = generar_imagen_cloudflare(
+                "cinematic dark psychology editorial scene", img_id
+            )
             if not ruta:
-                ruta = generar_imagen_cloudflare(
-                    "cinematic dark psychology editorial scene", img_id
-                )
+                ruta = reutilizar_imagen_flux(img_id)
             if not ruta:
                 ruta = imagen_fallback_pexels(
                     "cinematic dark psychology editorial", img_id
@@ -1854,13 +2083,12 @@ def crear_short_con_guion(guion_texto, titulo_short, hashtags_short, fondo, indi
     if total_imgs > 0:
         pct = fallback_count / total_imgs
         print(f"   🔍 Short {indice}: {fallback_count}/{total_imgs} gradientes ({pct*100:.0f}%)")
-        if pct > 0.4:
+        if pct > 0.5:
             print(f"   ❌ Short {indice} demasiados gradientes. SKIP.")
             return None, 0
 
     cta_texto = random.choice(CTA_SHORTS)
     cta = generar_audio(cta_texto, f"cta_{indice}", "conclusion")
-
     palabras_overlay = ["DATO CLAVE", "ERROR MENTAL", "ESTUDIO", "CIENCIA"]
     escenas = construir_escenas(segs, palabras_overlay)
 
@@ -1873,7 +2101,6 @@ def crear_short_con_guion(guion_texto, titulo_short, hashtags_short, fondo, indi
         total_final = total + d + 0.6
     audio, _ = mezclar_audio(segs, total_final, fondo, extras)
     print(f"   📊 Short {indice} total: {total_final:.1f}s")
-
     renderizar(escenas, total_final, audio, (1080, 1920), salida, sufijo=f"_s{indice}")
     return salida, total_final
 
@@ -1921,7 +2148,6 @@ def verificar_envs():
     if faltan:
         print(f"❌ Faltan variables: {', '.join(faltan)}")
         sys.exit(1)
-
     if not PEXELS_API_KEY:
         print("⚠️ PEXELS_API_KEY no configurada — sin fallback Pexels")
     else:
@@ -1933,10 +2159,9 @@ def verificar_envs():
             if r.status_code == 200:
                 print("✅ Pexels OK (fallback nivel 3)")
             else:
-                print(f"⚠️ Pexels respondió {r.status_code} — fallback deshabilitado")
+                print(f"⚠️ Pexels respondió {r.status_code}")
         except Exception as e:
             print(f"⚠️ Pexels no responde: {e}")
-
     yt = crear_cliente_youtube()
     if yt is None:
         print("❌ YOUTUBE_USER_TOKEN inválido/expirado")
@@ -1973,18 +2198,29 @@ def main():
         sys.exit(0)
 
     print("=" * 70)
-    print("🧠 CÓDIGO MENTAL - BOT v3.4 SAYAYIN")
+    print("🧠 CÓDIGO MENTAL - BOT v3.5 BOLA DE NIEVE")
     print(f"📅 {datetime.now(TZ):%Y-%m-%d %H:%M} | 🎤 {VOZ_CANAL['voz']}")
     print(f"📤 1 Video Largo + 2 Shorts | 🎨 Flux SEG_ESCENA={SEG_ESCENA}s")
-    print(f"🎯 v3.4: MINIATURAS ÉLITE con rostro + texto + composición")
+    print(f"🎯 v3.5: OUTLIERS + LOCK PERFIL + AVATAR + IDENTIDAD VISUAL")
     print("=" * 70)
 
     actualizar_rendimiento(youtube, estado)
+
+    # ═══ 1) Tema (con outliers) ═══
     tema = elegir_tema(estado, youtube)
     contexto = random.choice(tema["contextos"])
-    formato = random.choice(FORMATOS_NARRACION)
-    perfil = random.choice(PERFILES_NARRADOR)
-    print(f"🎭 Formato: {formato['nombre']} | Narrador: {perfil}")
+
+    # ═══ 2) Formato/perfil con lock (bola de nieve) ═══
+    formato, perfil, lock_activo = elegir_formato_perfil(estado)
+    print(f"🎭 Formato: {formato['nombre']} | Narrador: {perfil}"
+          + (" [LOCKED]" if lock_activo else ""))
+
+    # ═══ 3) Uniforme del nicho (informativo) ═══
+    uniforme = detectar_uniforme_nicho(youtube, tema["keywords"][0])
+    if uniforme:
+        contra = uniforme.get("contra_patrones", [])
+        if contra:
+            print(f"   💡 Contra-patrón sugerido: {contra[0].get('idea', '')[:80]}")
 
     sugerencias = list(dict.fromkeys(
         sugerencias_youtube(tema["seed"]) +
@@ -1994,12 +2230,21 @@ def main():
     fondo = seleccionar_fondo(estado)
     titulos_previos = cargar_json(TITULOS_FILE, {"titulos": []})["titulos"][-20:]
 
+    # ═══ 4) Plan con validación de audiencia ═══
+    avatar_actual = estado.get("avatar_audiencia")
     plan = titulo = None
     for intento in range(4):
         try:
             plan = generar_plan(tema, contexto, sugerencias, titulos_previos, formato, perfil)
             if plan.get("palabras_clave") and tema_ya_usado(" ".join(map(str, plan["palabras_clave"]))):
                 raise ValueError("tema repetido")
+
+            ok_aud, motivo = validar_misma_audiencia(avatar_actual, plan, tema)
+            if not ok_aud:
+                print(f"   ⚠️ Plan rechazado por audiencia: {motivo}")
+                plan = None
+                continue
+
             titulo = elegir_titulo(plan["titulos"], plan.get("dato_contraintuitivo", ""))
             if not titulo:
                 raise ValueError("sin título válido")
@@ -2081,7 +2326,7 @@ def main():
                     if ruta:
                         stats["pexels"] += 1
                     else:
-                        print(f"   ⚠️ Cloudflare+Pool+Pexels fallaron, usando gradiente")
+                        print(f"   ⚠️ Todo falló, usando gradiente")
                         ruta = imagen_fallback(img_id)
                         stats["gradient"] += 1
             medios.append(ruta)
@@ -2113,9 +2358,7 @@ def main():
     print(f"📝 Descripción (primeras 2 líneas):")
     print("   " + "\n   ".join(descripcion.split("\n")[:2]))
 
-    # ═══════════════════════════════════════════════════════════════
-    # MINIATURA v3.4: rostro emocional + texto + composición
-    # ═══════════════════════════════════════════════════════════════
+    # ═══ v3.5: MINIATURA CON IDENTIDAD ═══
     print("🖼️  Buscando rostro emocional para miniatura...")
     portada = elegir_texto_portada(plan.get("palabras_portada"), titulo)
     print(f"   📝 Texto de portada elegido: '{portada}'")
@@ -2123,23 +2366,26 @@ def main():
     img_miniatura = None
     miniatura_ok = False
 
-    # Nivel 1: Rostro emocional
     img_miniatura = buscar_rostro_emocional_pexels(tema["tema"] + " person face")
     if img_miniatura:
-        miniatura_ok = crear_miniatura_v34(img_miniatura, portada, "miniatura.jpg")
+        miniatura_ok = crear_miniatura_v34(
+            img_miniatura, portada, "miniatura.jpg",
+            forzar_estilo=IDENTIDAD_VISUAL["estilo_thumb"]
+        )
         if miniatura_ok:
             print("   ✅ Miniatura con ROSTRO emocional generada")
 
-    # Nivel 2: Cuerpo/manos
     if not miniatura_ok:
         print("   🔄 Sin rostro. Buscando cuerpo/manos emocionales...")
         img_miniatura = buscar_cuerpo_emocional_pexels(tema["tema"])
         if img_miniatura:
-            miniatura_ok = crear_miniatura_v34(img_miniatura, portada, "miniatura.jpg")
+            miniatura_ok = crear_miniatura_v34(
+                img_miniatura, portada, "miniatura.jpg",
+                forzar_estilo=IDENTIDAD_VISUAL["estilo_thumb"]
+            )
             if miniatura_ok:
                 print("   ✅ Miniatura con CUERPO emocional generada")
 
-    # Nivel 3: Flux
     if not miniatura_ok:
         print("   🔄 Pexels sin resultados. Usando Flux abstracto...")
         escena_mini = str(plan.get("miniatura_escena", "professional psychology cinematic dark"))
@@ -2148,10 +2394,12 @@ def main():
             base_mini = reutilizar_imagen_flux("thumb_mini")
         if not base_mini:
             base_mini = imagen_fallback("thumb_mini")
-        miniatura_ok = crear_miniatura_v34(base_mini, portada, "miniatura.jpg")
+        miniatura_ok = crear_miniatura_v34(
+            base_mini, portada, "miniatura.jpg",
+            forzar_estilo=IDENTIDAD_VISUAL["estilo_thumb"]
+        )
 
     miniatura = "miniatura.jpg" if miniatura_ok else None
-    # ═══════════════════════════════════════════════════════════════
 
     palabras_overlay_largo = ["DATO CLAVE", "ESTUDIO CIENTÍFICO", "ERROR MENTAL", "EVIDENCIA", "LA CIENCIA DICE"]
     escenas = construir_escenas(segs, palabras_overlay_largo)
@@ -2166,9 +2414,9 @@ def main():
         print(f"📱 Short 2:    {slot_short2:%Y-%m-%d %H:%M} CDMX")
         dias = {slot_largo.date(), slot_short1.date(), slot_short2.date()}
         if len(dias) != 1:
-            print(f"⚠️ ADVERTENCIA: slots en días distintos: {dias}")
+            print(f"⚠️ Slots en días distintos: {dias}")
         else:
-            print(f"✅ Los 3 slots están el mismo día: {slot_largo.date()}")
+            print(f"✅ Los 3 slots el mismo día: {slot_largo.date()}")
     else:
         slot_largo = slot_short1 = slot_short2 = None
         print("📤 Publicación inmediata")
@@ -2273,10 +2521,22 @@ def main():
     estado["videos"] = estado["videos"][-60:]
     estado["temas_recientes"] = (estado["temas_recientes"] + [tema["tema"]])[-6:]
     estado["ultima_publicacion"] = ahora
-    guardar_json(ESTADO_FILE, estado)
 
+    # ═══ v3.5: avatar + bloqueo perfil tras subida ═══
+    if not estado.get("avatar_audiencia"):
+        avatar_nuevo = generar_avatar_audiencia(plan, tema)
+        if avatar_nuevo:
+            estado["avatar_audiencia"] = avatar_nuevo
+            print(f"👤 Avatar guardado: {avatar_nuevo.get('edad','?')} / "
+                  f"{avatar_nuevo.get('dolor','')[:60]}")
+
+    if vid and not estado.get("perfil_lock"):
+        bloquear_perfil(estado, formato, perfil, vid)
+    # ══════════════════════════════════════════════
+
+    guardar_json(ESTADO_FILE, estado)
     limpiar_temporales()
-    print("🎉 Proceso completado: 1 video largo + 2 shorts únicos programados.")
+    print("🎉 Proceso completo: 1 video largo + 2 shorts programados.")
 
 if __name__ == "__main__":
     try:
